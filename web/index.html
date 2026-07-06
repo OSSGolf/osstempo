@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Tempo — Trainer Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #0a0d0b;
+    --bg2:       #0e1310;
+    --surface:   #141b16;
+    --surface2:  #1b231d;
+    --line:      #2a342c;
+    --text:      #e9ede9;
+    --muted:     #899389;
+    --faint:     #5a655c;
+    --green:     #45dd8b;   /* ball / impact */
+    --amber:     #ffb24d;   /* top of backswing */
+    --red:       #ff5d4a;   /* full-swing extent */
+    --green-dim: #1d4a33;
+    --shadow:    0 18px 50px -24px rgba(0,0,0,.85);
+    --r:         18px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body { height: 100%; }
+  body {
+    font-family: "Hanken Grotesk", system-ui, sans-serif;
+    background:
+      radial-gradient(120% 80% at 50% -10%, #121a14 0%, transparent 60%),
+      radial-gradient(80% 60% at 90% 110%, #14120d 0%, transparent 55%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100%;
+    padding: 22px 18px 60px;
+    letter-spacing: .01em;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* grain */
+  body::before {
+    content:""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap { max-width: 600px; margin: 0 auto; position: relative; z-index: 1; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 22px; animation: rise .6s both;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand h1 {
+    font-family: "Instrument Serif", serif; font-weight: 400;
+    font-size: 40px; line-height: .9; letter-spacing: .01em;
+  }
+  .brand .tag {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .28em;
+    color: var(--faint); font-weight: 600;
+  }
+
+  .conn-btn {
+    font-family: inherit; font-weight: 600; font-size: 13.5px;
+    color: var(--bg); background: var(--green);
+    border: none; border-radius: 999px; padding: 11px 20px; cursor: pointer;
+    display: flex; align-items: center; gap: 9px; transition: transform .15s, filter .15s, background .2s, color .2s;
+  }
+  .conn-btn:hover { filter: brightness(1.08); }
+  .conn-btn:active { transform: scale(.96); }
+  .conn-btn.connected { background: var(--surface2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+  .conn-btn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bg); }
+  .conn-btn.connected .dot { background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 2s infinite; }
+  .conn-btn.busy { opacity: .6; pointer-events: none; }
+
+  @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:.35 } }
+
+  /* ---------- hero / strip ---------- */
+  .stage {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--bg2) 100%);
+    border: 1px solid var(--line); border-radius: var(--r);
+    padding: 20px 18px 16px; box-shadow: var(--shadow);
+    margin-bottom: 16px; animation: rise .6s .06s both;
+  }
+  .stage-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  .ratio { font-family: "Instrument Serif", serif; font-size: 34px; line-height: 1; }
+  .ratio small { font-size: 13px; color: var(--muted); font-family: "DM Mono", monospace; letter-spacing: 0; }
+  .phase-label {
+    font-family: "DM Mono", monospace; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .18em; color: var(--amber); text-align: right; padding-top: 6px;
+    transition: color .3s; min-height: 16px;
+  }
+  canvas { display: block; width: 100%; height: 132px; cursor: grab; touch-action: none; }
+  canvas:active { cursor: grabbing; }
+  .legend { display: flex; gap: 16px; margin-top: 12px; font-size: 11.5px; color: var(--muted); }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .legend .ld { display: none; }
+  body.full .legend .ld { display: flex; }
+
+  /* ---------- run controls ---------- */
+  .runbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; animation: rise .6s .1s both; }
+  .runbar button {
+    font-family: inherit; font-weight: 600; font-size: 13px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 13px 4px; cursor: pointer; transition: all .16s; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .runbar button .ic { font-size: 15px; }
+  .runbar button:hover { border-color: var(--faint); color: var(--text); }
+  .runbar button.active { background: var(--green); color: var(--bg); border-color: var(--green); box-shadow: 0 8px 24px -12px var(--green); }
+  .runbar button.active.prev { background: var(--amber); border-color: var(--amber); box-shadow: 0 8px 24px -12px var(--amber); }
+
+  /* ---------- mode toggle ---------- */
+  .mode {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    margin-bottom: 16px; position: relative; animation: rise .6s .14s both;
+  }
+  .mode button {
+    font-family: inherit; font-weight: 600; font-size: 14px; color: var(--muted);
+    background: transparent; border: none; border-radius: 10px; padding: 12px; cursor: pointer;
+    transition: color .2s; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .mode button .sub { font-size: 11px; color: var(--faint); font-weight: 500; }
+  .mode button.on { color: var(--text); }
+  .mode button.on .sub { color: var(--green); }
+  .mode-glider {
+    position: absolute; top: 4px; left: 4px; bottom: 4px; width: calc(50% - 4px);
+    background: var(--surface2); border: 1px solid var(--line); border-radius: 10px;
+    transition: transform .28s cubic-bezier(.5,.05,.2,1); z-index: 0;
+  }
+  body.full .mode-glider { transform: translateX(100%); }
+
+  /* ---------- control cards ---------- */
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 18px; margin-bottom: 14px; animation: rise .6s .18s both;
+  }
+  .ctl { margin-bottom: 18px; }
+  .ctl:last-child { margin-bottom: 0; }
+  .ctl-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 9px; }
+  .ctl-head .name { font-size: 13.5px; font-weight: 600; }
+  .ctl-head .name .hint { color: var(--faint); font-weight: 500; font-size: 11.5px; margin-left: 6px; }
+  .ctl-head .val { font-family: "DM Mono", monospace; font-size: 14px; color: var(--amber); }
+  .ctl-head .val .u { color: var(--faint); font-size: 11px; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 999px;
+    background: var(--surface2); outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--text); border: 3px solid var(--surface); box-shadow: 0 2px 8px rgba(0,0,0,.5); transition: transform .12s;
+  }
+  input[type=range]::-webkit-slider-thumb:active { transform: scale(1.18); }
+  input[type=range]::-moz-range-thumb {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--text); border: 3px solid var(--surface); cursor: pointer;
+  }
+  input.accent-amber::-webkit-slider-thumb { background: var(--amber); }
+  input.accent-amber::-moz-range-thumb { background: var(--amber); }
+
+  .section-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .2em; color: var(--faint);
+    font-weight: 700; margin: 0 4px 10px;
+  }
+  .full-only { display: none; }
+  body.full .full-only { display: block; }
+
+  details.adv { animation: rise .6s .22s both; }
+  details.adv summary {
+    list-style: none; cursor: pointer; padding: 14px 18px; border: 1px solid var(--line);
+    border-radius: var(--r); background: var(--surface); font-weight: 600; font-size: 13.5px;
+    display: flex; justify-content: space-between; align-items: center; color: var(--muted);
+  }
+  details.adv summary::-webkit-details-marker { display: none; }
+  details.adv summary .chev { transition: transform .25s; color: var(--faint); }
+  details.adv[open] summary { border-radius: var(--r) var(--r) 0 0; color: var(--text); }
+  details.adv[open] summary .chev { transform: rotate(180deg); }
+  details.adv .card { border-radius: 0 0 var(--r) var(--r); border-top: none; margin-bottom: 0; animation: none; }
+
+  /* ---------- toast ---------- */
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px);
+    background: var(--surface2); color: var(--text); border: 1px solid var(--line);
+    padding: 12px 18px; border-radius: 12px; font-size: 13px; font-weight: 500;
+    box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: all .3s; z-index: 50; max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.err { border-color: var(--red); }
+
+  .foot { text-align: center; color: var(--faint); font-size: 11.5px; line-height: 1.6; margin-top: 22px; animation: rise .6s .26s both; }
+  .foot code { font-family: "DM Mono", monospace; color: var(--muted); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @media (max-width: 420px) { .brand h1 { font-size: 34px; } .runbar button { font-size: 12px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>Tempo</h1>
+      <span class="tag">Trainer</span>
+    </div>
+    <button id="connBtn" class="conn-btn"><span class="dot"></span><span id="connLabel">Connect</span></button>
+  </header>
+
+  <!-- hero strip -->
+  <div class="stage">
+    <div class="stage-top">
+      <div class="ratio"><span id="ratioVal">2.0</span><small> : 1</small></div>
+      <div class="phase-label" id="phaseLabel">ready</div>
+    </div>
+    <canvas id="strip"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--green)"></i>ball / impact</span>
+      <span><i style="background:var(--amber)"></i>backswing top</span>
+      <span class="ld"><i style="background:var(--red)"></i>full extent</span>
+    </div>
+  </div>
+
+  <!-- run state -->
+  <div class="runbar" id="runbar">
+    <button data-run="0"><span class="ic">■</span>Stop</button>
+    <button data-run="3" class="prev"><span class="ic">◎</span>Set point</button>
+    <button data-run="1"><span class="ic">▶</span>Run</button>
+    <button data-run="2"><span class="ic">↻</span>Once</button>
+  </div>
+
+  <!-- mode -->
+  <div class="mode" id="mode">
+    <div class="mode-glider"></div>
+    <button data-mode="0" class="on">Putt<span class="sub">2:1</span></button>
+    <button data-mode="1">Full swing<span class="sub">arc</span></button>
+  </div>
+
+  <!-- primary: backswing point -->
+  <div class="card">
+    <div class="section-label">Backswing point — drag the amber dot above</div>
+    <div class="ctl">
+      <div class="ctl-head">
+        <span class="name">Reach<span class="hint">how far back</span></span>
+        <span class="val"><span id="reachLed">58</span><span class="u"> led ·</span> <span id="reachCm">40.3</span><span class="u"> cm</span></span>
+      </div>
+      <input type="range" id="reach" class="accent-amber" min="1" max="71" value="58" />
+    </div>
+  </div>
+
+  <!-- tempo -->
+  <div class="card">
+    <div class="section-label">Tempo</div>
+    <div class="ctl">
+      <div class="ctl-head"><span class="name">Backswing</span><span class="val"><span id="backVal">700</span><span class="u"> ms</span></span></div>
+      <input type="range" id="back" min="100" max="2000" step="10" value="700" />
+    </div>
+    <div class="ctl">
+      <div class="ctl-head"><span class="name">Downswing<span class="hint">to impact</span></span><span class="val"><span id="downVal">350</span><span class="u"> ms</span></span></div>
+      <input type="range" id="down" min="100" max="1500" step="10" value="350" />
+    </div>
+    <div class="ctl">
+      <div class="ctl-head"><span class="name">Release<span class="hint">lag into impact</span></span><span class="val"><span id="relVal">0</span><span class="u"> / 100</span></span></div>
+      <input type="range" id="rel" class="accent-amber" min="0" max="100" value="0" />
+    </div>
+    <div class="ctl">
+      <div class="ctl-head"><span class="name">Follow-through<span class="hint">after impact</span></span><span class="val"><span id="followVal">350</span><span class="u"> ms</span></span></div>
+      <input type="range" id="follow" min="0" max="3000" step="10" value="350" />
+    </div>
+    <div class="ctl full-only">
+      <div class="ctl-head"><span class="name">Top pause<span class="hint">transition</span></span><span class="val"><span id="topVal">150</span><span class="u"> ms</span></span></div>
+      <input type="range" id="top" min="0" max="2000" step="10" value="150" />
+    </div>
+  </div>
+
+  <!-- advanced -->
+  <details class="adv">
+    <summary>Timing &amp; brightness <span class="chev">▾</span></summary>
+    <div class="card">
+      <div class="ctl">
+        <div class="ctl-head"><span class="name">Brightness</span><span class="val"><span id="briVal">40</span><span class="u"> / 255</span></span></div>
+        <input type="range" id="bri" min="2" max="255" value="40" />
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><span class="name">Get-ready</span><span class="val"><span id="readyVal">1000</span><span class="u"> ms</span></span></div>
+        <input type="range" id="ready" min="0" max="4000" step="50" value="1000" />
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><span class="name">Finish hold</span><span class="val"><span id="holdVal">600</span><span class="u"> ms</span></span></div>
+        <input type="range" id="hold" min="0" max="3000" step="50" value="600" />
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><span class="name">Rest gap</span><span class="val"><span id="restVal">3000</span><span class="u"> ms</span></span></div>
+        <input type="range" id="rest" min="0" max="8000" step="100" value="3000" />
+      </div>
+    </div>
+  </details>
+
+  <p class="foot">
+    Needs <strong>Web Bluetooth</strong> — Chrome/Edge (desktop or Android) over <code>https</code> or <code>localhost</code>.
+    iOS: use the <em>Bluefy</em> browser. The strip above previews your settings even before connecting.
+  </p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ====================== Firmware GATT ====================== */
+const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const U = (t) => `6e40000${t}-b5a3-f393-e0a9-e50e24dcca9e`;
+const CH = {
+  back:  U(2), down: U(3), reach: U(4), bri: U(5), control: U(6),
+  ready: U(7), hold: U(8), rest: U(9), mode: U("a"), top: U("b"), release: U("c"), follow: U("d"),
+};
+
+const NUM = 144, CENTER = (NUM - 1) / 2, HALF = (NUM - 1) >> 1;
+const CM_PER_LED = 100 / NUM;          // 144 LEDs / 1 m
+
+/* ====================== State ====================== */
+// Web app is source of truth for the session. Per-mode profiles + shared globals.
+const profiles = {
+  0: { back: 700, down: 350, reach: 58, top: 0,   release: 0,  follow: 350 },   // putt: pendular
+  1: { back: 900, down: 300, reach: 60, top: 150, release: 55, follow: 300 },   // full: moderate lag
+};
+const globals = { bri: 40, ready: 1000, hold: 600, rest: 3000 };
+let mode = 0;          // 0 putt, 1 full
+let runState = 1;      // 0 idle, 1 loop, 2 single, 3 preview  (animate locally by default)
+const P = () => profiles[mode];
+
+/* ====================== Easing (mirrors firmware) ====================== */
+const easeInOut = p => 0.5 - 0.5 * Math.cos(p * Math.PI);
+const easeOut   = p => Math.sin(p * Math.PI / 2);
+// drop-to-impact: free pendulum (rel 0) -> late lag release (rel 1)
+const dropEase  = (ph, rel) => { const pend = 1 - Math.cos(ph * Math.PI / 2); return pend + (ph*ph*ph*ph - pend) * rel; };
+
+// Build the timeline of one full rep for the active mode.
+// Each segment: { dur, pos(ph)->led|null, marks:[{i,c}], label }
+function buildTimeline() {
+  const p = P(), amp = p.reach, rel = p.release / 100;
+  const G = (c) => ({ green: "--green", amber: "--amber", red: "--red" }[c]);
+  const MB = { i: Math.round(CENTER), c: G("green") };       // ball
+  if (mode === 0) {
+    const top = CENTER + amp;
+    const MT = { i: Math.round(top), c: G("amber") };
+    return [
+      { dur: globals.ready, pos: () => null, marks: [MB],     label: "set up" },
+      { dur: globals.ready, pos: () => null, marks: [MB, MT], label: "aim" },
+      { dur: p.back, pos: ph => CENTER + amp * Math.sin(ph * Math.PI / 2), marks: [MB, MT], label: "backswing" },
+      { dur: p.down,   pos: ph => CENTER + amp * (1 - dropEase(ph, rel)),  marks: [MB], label: "impact" },
+      { dur: p.follow, pos: ph => CENTER - amp * easeOut(ph),              marks: [MB], label: "follow" },
+      { dur: globals.hold, pos: () => CENTER - amp, marks: [MB], label: "finish" },
+      { dur: globals.rest, pos: () => null, marks: [], label: "rest" },
+    ];
+  }
+  // full swing
+  const backRed = NUM - 1, folRed = 0, backAmber = CENTER + amp;
+  const dOut = backRed - CENTER, dIn = backRed - backAmber;
+  const bOut = p.back * dOut / (dOut + dIn), bIn = p.back - bOut;
+  const dBack = p.down * dIn / (dIn + dOut), dDown = p.down - dBack;
+  const lerp = (a, b, e) => ph => a + (b - a) * e(ph);
+  const MA = { i: Math.round(backAmber), c: G("amber") };
+  const R1 = { i: backRed, c: G("red") }, R0 = { i: folRed, c: G("red") };
+  const ALL = [MB, R1, R0, MA];   // amber last so it stays visible if it coincides with a red at max reach
+  return [
+    { dur: globals.ready, pos: () => null, marks: [MB],  label: "set up" },
+    { dur: globals.ready, pos: () => null, marks: ALL,   label: "aim" },
+    { dur: bOut,  pos: lerp(CENTER, backRed, easeInOut),    marks: ALL, label: "takeaway" },
+    { dur: bIn,   pos: lerp(backRed, backAmber, easeInOut), marks: ALL, label: "to top" },
+    { dur: p.top, pos: () => backAmber, marks: ALL, label: "transition" },
+    { dur: dBack, pos: lerp(backAmber, backRed, easeInOut), marks: ALL, label: "drop" },
+    { dur: dDown, pos: ph => backRed + (CENTER - backRed) * dropEase(ph, rel), marks: ALL, label: "impact" },
+    { dur: p.follow, pos: lerp(CENTER, folRed, easeOut),    marks: ALL, label: "follow" },
+    { dur: globals.hold, pos: () => folRed, marks: ALL, label: "finish" },
+    { dur: globals.rest, pos: () => null, marks: [], label: "rest" },
+  ];
+}
+
+/* ====================== Canvas strip ====================== */
+const cv = document.getElementById("strip");
+const ctx = cv.getContext("2d");
+let cssW = 0, cssH = 0, padX = 18;
+function fitCanvas() {
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  cssW = r.width; cssH = r.height;
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+const ledX = i => padX + (i / (NUM - 1)) * (cssW - 2 * padX);
+const stripY = () => cssH * 0.5;
+const xToLed = x => Math.round(((x - padX) / (cssW - 2 * padX)) * (NUM - 1));
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function glowDot(x, y, radius, color, intensity) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  g.addColorStop(0, color);
+  g.addColorStop(0.4, color);
+  g.addColorStop(1, "transparent");
+  ctx.globalAlpha = intensity;
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, radius, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function render(state) {
+  const y = stripY();
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  // strip channel
+  const ch = 7;
+  ctx.fillStyle = "rgba(255,255,255,.03)";
+  roundRect(padX - 8, y - ch, cssW - 2 * padX + 16, ch * 2, ch);
+  ctx.fill();
+  // faint LED ticks
+  ctx.fillStyle = "rgba(255,255,255,.05)";
+  for (let i = 0; i < NUM; i += 2) { ctx.beginPath(); ctx.arc(ledX(i), y, 1, 0, 7); ctx.fill(); }
+
+  // markers
+  for (const m of state.marks) {
+    const c = cssVar(m.c), x = ledX(m.i);
+    glowDot(x, y, 16, c, 0.32);
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 3.4, 0, 7); ctx.fill();
+  }
+
+  // comet
+  if (state.pos != null) {
+    const x = ledX(state.pos);
+    // tail
+    const dir = state.vel >= 0 ? -1 : 1;
+    for (let t = 1; t <= 7; t++) {
+      const tx = ledX(state.pos + dir * t * 1.1);
+      glowDot(tx, y, 9, "rgba(255,255,255,1)", 0.10 * (1 - t / 8));
+    }
+    glowDot(x, y, 22, "rgba(255,255,255,.9)", 0.5);
+    glowDot(x, y, 11, "#ffffff", 0.9);
+    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(x, y, 3.6, 0, 7); ctx.fill();
+  }
+
+  // draggable amber handle ring (in set-point mode)
+  if (runState === 3) {
+    const amberLed = CENTER + P().reach;
+    const x = ledX(amberLed), c = cssVar("--amber");
+    ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.globalAlpha = .9;
+    ctx.beginPath(); ctx.arc(x, y, 13, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ====================== Animation loop ====================== */
+let timeline = buildTimeline();
+let total = 0, t0 = performance.now();
+function rebuild() { timeline = buildTimeline(); total = timeline.reduce((s, x) => s + x.dur, 0); }
+rebuild();
+
+let lastPos = null;
+function frame(now) {
+  let state;
+  if (runState === 3) {                       // preview: static dots, draggable amber
+    state = { pos: null, vel: 0, marks: buildTimeline()[1].marks, label: "set point" };
+  } else if (runState === 0) {                // idle: dim ball
+    state = { pos: null, vel: 0, marks: [{ i: Math.round(CENTER), c: "--green-dim" }], label: "idle" };
+  } else {                                     // loop / single: animate
+    let t = ((now - t0) % total + total) % total;
+    let acc = 0, seg = timeline[timeline.length - 1];
+    for (const s of timeline) { if (t < acc + s.dur) { seg = s; break; } acc += s.dur; }
+    const ph = seg.dur ? (t - acc) / seg.dur : 0;
+    const pos = seg.pos(ph);
+    const vel = pos == null ? 0 : pos - (lastPos == null ? pos : lastPos);
+    lastPos = pos;
+    state = { pos, vel, marks: seg.marks, label: seg.label };
+  }
+  document.getElementById("phaseLabel").textContent = state.label;
+  render(state);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ====================== UI binding ====================== */
+const $ = id => document.getElementById(id);
+function refreshReadouts() {
+  const p = P();
+  $("backVal").textContent = p.back;
+  $("downVal").textContent = p.down;
+  $("topVal").textContent  = p.top;
+  $("relVal").textContent  = p.release;
+  $("followVal").textContent = p.follow;
+  $("reachLed").textContent = p.reach;
+  $("reachCm").textContent = (p.reach * CM_PER_LED).toFixed(1);
+  $("briVal").textContent = globals.bri;
+  $("readyVal").textContent = globals.ready;
+  $("holdVal").textContent = globals.hold;
+  $("restVal").textContent = globals.rest;
+  $("ratioVal").textContent = (p.back / p.down).toFixed(1);
+  // sliders
+  $("back").value = p.back; $("down").value = p.down; $("top").value = p.top; $("rel").value = p.release;
+  $("follow").value = p.follow;
+  $("reach").value = p.reach; $("bri").value = globals.bri;
+  $("ready").value = globals.ready; $("hold").value = globals.hold; $("rest").value = globals.rest;
+  rebuild();
+}
+
+// Each slider -> state + throttled BLE write
+function bindParam(id, scope, key, ch, twoByte) {
+  const el = $(id);
+  const apply = (write) => {
+    const v = parseInt(el.value, 10);
+    (scope === "p" ? P() : globals)[key] = v;
+    refreshReadouts();
+    if (write) queueWrite(ch, v, twoByte);
+  };
+  el.addEventListener("input", () => apply(true));
+}
+bindParam("back", "p", "back", CH.back, true);
+bindParam("down", "p", "down", CH.down, true);
+bindParam("top", "p", "top", CH.top, true);
+bindParam("rel", "p", "release", CH.release, false);
+bindParam("follow", "p", "follow", CH.follow, true);
+bindParam("reach", "p", "reach", CH.reach, false);
+bindParam("bri", "g", "bri", CH.bri, false);
+bindParam("ready", "g", "ready", CH.ready, true);
+bindParam("hold", "g", "hold", CH.hold, true);
+bindParam("rest", "g", "rest", CH.rest, true);
+
+// dragging reach: nudge device into preview so the amber moves live
+$("reach").addEventListener("pointerdown", () => { if (connected && runState !== 1) setRun(3); });
+
+/* ---- run state buttons ---- */
+function setRun(v) {
+  runState = v;
+  if (v === 1 || v === 2) { t0 = performance.now(); lastPos = null; }
+  document.querySelectorAll("#runbar button").forEach(b => b.classList.toggle("active", +b.dataset.run === v));
+  if (connected) queueWrite(CH.control, v, false);
+}
+document.querySelectorAll("#runbar button").forEach(b => b.addEventListener("click", () => setRun(+b.dataset.run)));
+setRun(1);
+
+/* ---- mode buttons ---- */
+function setMode(m) {
+  mode = m;
+  document.body.classList.toggle("full", m === 1);
+  document.querySelectorAll("#mode button").forEach(b => b.classList.toggle("on", +b.dataset.mode === m));
+  refreshReadouts();
+  if (connected) {
+    (async () => {
+      try {
+        await writeNow(CH.mode, m, false);          // firmware refreshes the per-mode chars
+        P().back  = await readU(CH.back, true);      // ...so we read this mode's saved values
+        P().down  = await readU(CH.down, true);
+        P().reach = await readU(CH.reach, false);
+        P().top   = await readU(CH.top, true);
+        P().release = await readU(CH.release, false);
+        P().follow = await readU(CH.follow, true);
+        refreshReadouts();
+      } catch (e) {}
+    })();
+  }
+}
+document.querySelectorAll("#mode button").forEach(b => b.addEventListener("click", () => setMode(+b.dataset.mode)));
+
+/* ---- canvas drag = set backswing point ---- */
+let dragging = false;
+function pointerLed(e) {
+  const r = cv.getBoundingClientRect();
+  return Math.max(1, Math.min(HALF, xToLed(e.clientX - r.left) - Math.round(CENTER)));
+}
+cv.addEventListener("pointerdown", e => {
+  dragging = true; cv.setPointerCapture(e.pointerId);
+  if (connected && runState !== 1) setRun(3);
+  P().reach = pointerLed(e); refreshReadouts(); queueWrite(CH.reach, P().reach, false);
+});
+cv.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  P().reach = pointerLed(e); refreshReadouts(); queueWrite(CH.reach, P().reach, false);
+});
+cv.addEventListener("pointerup", () => { dragging = false; });
+
+/* ====================== Web Bluetooth ====================== */
+let device = null, server = null, chars = {}, connected = false;
+
+function toast(msg, isErr) {
+  const t = $("toast"); t.textContent = msg; t.classList.toggle("err", !!isErr); t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+/* serialize all GATT ops; coalesce live writes to the latest value per char */
+const gattQ = []; let gattBusy = false;
+const pendingWrite = {};
+function pumpGatt() {
+  if (gattBusy) return;
+  const job = gattQ.shift();
+  if (!job) return;
+  gattBusy = true;
+  // Promise.resolve().then(job.fn) so a SYNCHRONOUS throw (e.g. chars[ch] undefined after a
+  // disconnect) becomes a rejection and .finally still resets gattBusy — the queue never wedges.
+  Promise.resolve().then(job.fn).then(job.res, job.rej).finally(() => { gattBusy = false; pumpGatt(); });
+}
+const gattOp = fn => new Promise((res, rej) => { gattQ.push({ fn, res, rej }); pumpGatt(); });
+
+function queueWrite(ch, value, twoByte) {
+  if (!connected) return;
+  const fresh = !(ch in pendingWrite);
+  pendingWrite[ch] = { value, twoByte };
+  if (!fresh) return;                       // a write for this char is already queued; it'll use latest
+  gattOp(async () => {
+    const job = pendingWrite[ch]; delete pendingWrite[ch];
+    const bytes = job.twoByte ? new Uint8Array([job.value & 0xff, (job.value >> 8) & 0xff]) : new Uint8Array([job.value & 0xff]);
+    await chars[ch].writeValue(bytes);
+  }).catch(() => {});
+}
+
+async function readU(ch, twoByte) {
+  const dv = await gattOp(() => chars[ch].readValue());
+  return twoByte ? dv.getUint16(0, true) : dv.getUint8(0);
+}
+function writeNow(ch, value, twoByte) {
+  const bytes = twoByte ? new Uint8Array([value & 0xff, (value >> 8) & 0xff]) : new Uint8Array([value & 0xff]);
+  return gattOp(() => chars[ch].writeValue(bytes));
+}
+
+async function connect() {
+  if (!navigator.bluetooth) { toast("Web Bluetooth not supported in this browser", true); return; }
+  const btn = $("connBtn");
+  try {
+    btn.classList.add("busy"); $("connLabel").textContent = "Scanning…";
+    device = await navigator.bluetooth.requestDevice({ filters: [{ name: "PuttTempo" }], optionalServices: [SVC] });
+    device.addEventListener("gattserverdisconnected", onDisconnect);
+    $("connLabel").textContent = "Connecting…";
+    server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    for (const [k, uuid] of Object.entries(CH)) chars[uuid] = await svc.getCharacteristic(uuid);
+    connected = true;
+    btn.classList.remove("busy"); btn.classList.add("connected"); $("connLabel").textContent = device.name || "Connected";
+
+    // pull the device's (persisted) active-mode values into our model
+    mode = await readU(CH.mode, false);
+    P().back = await readU(CH.back, true);
+    P().down = await readU(CH.down, true);
+    P().reach = await readU(CH.reach, false);
+    P().top  = await readU(CH.top, true);
+    P().release = await readU(CH.release, false);
+    P().follow = await readU(CH.follow, true);
+    globals.bri  = await readU(CH.bri, false);
+    globals.ready = await readU(CH.ready, true);
+    globals.hold = await readU(CH.hold, true);
+    globals.rest = await readU(CH.rest, true);
+    setMode(mode);
+    refreshReadouts();
+    setRun(1);
+    toast("Connected — settings loaded");
+  } catch (e) {
+    btn.classList.remove("busy"); $("connLabel").textContent = connected ? (device.name || "Connected") : "Connect";
+    if (e && e.name !== "NotFoundError") toast("Connection failed: " + (e.message || e), true);
+  }
+}
+
+function onDisconnect() {
+  connected = false; chars = {};
+  $("connBtn").classList.remove("connected"); $("connLabel").textContent = "Connect";
+  toast("Disconnected", true);
+}
+
+$("connBtn").addEventListener("click", () => { if (connected) device.gatt.disconnect(); else connect(); });
+
+/* ====================== boot ====================== */
+window.addEventListener("resize", fitCanvas);
+fitCanvas();
+refreshReadouts();
+</script>
+</body>
+</html>

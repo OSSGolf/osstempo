@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Arduino / arduino-cli build output
+build/
+*.elf
+*.map
+
+# Editor cruft
+.vscode/
+*.swp
+*~
