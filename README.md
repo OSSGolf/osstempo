@@ -218,7 +218,8 @@ write characteristics), or a Web Bluetooth page (TODO below).
 ## Clients
 
 - **Web Bluetooth page** (`web/index.html`) — single self-contained control page.
-- **iOS app** (SwiftUI + CoreBluetooth) at `/Users/hectorzarate/Documents/workspace/OSSTempo` —
+- **iOS app** (SwiftUI + CoreBluetooth) in the
+  [osstempo-ios repo](https://github.com/OSSGolf/osstempo-ios) —
   native controller with numeric tuning (tap to type or hold to adjust), per-value
   strip diagrams, a follow-through link, a live reach drag, the get-ready countdown /
   rails toggle, and the on-strip stroke visualizer. Dev-only (no App Store).
