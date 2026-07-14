@@ -264,7 +264,7 @@ class CharCB : public BLECharacteristicCallbacks {
     };
 
     // control is runtime-only (not persisted) so it never boots into preview.
-    if (uuid == CH_CONTROL) { control = min((int)(uint8_t)v[0], 3); return; }   // value is 0..255, so only the upper clamp is needed
+    if (uuid == CH_CONTROL) { control = min((int)(uint8_t)v[0], 3); if (syncRole == ROLE_LEADER) leaderMarkEvent(); return; }
     if (uuid == CH_SESSIONCMD) { handleSessionCmd(v); return; }                 // opcode-tagged session command (§6)
 
     if (uuid == CH_BACKSWING)       profiles[mode].backswingMs = constrain(u16(), 100, 5000);
@@ -287,6 +287,7 @@ class CharCB : public BLECharacteristicCallbacks {
 
     paramsDirty = true;             // mark for debounced save in loop()
     lastWriteMs = millis();
+    if (syncRole == ROLE_LEADER) leaderMarkEvent();   // #9: propagate the param change to followers now (§4.4)
   }
 };
 
@@ -773,24 +774,13 @@ void loop() {
     paramsDirty = false; saveParams();
   }
 
+  syncDrainDeferred();       // perform RX-callback-deferred revert/identify here on core 1 (#1/#5)
   leaderBeaconTick();        // leader: broadcast the SyncBeacon at 4 Hz (no-op otherwise)
-  syncServiceTimeouts();     // follower: orphan-timeout revert to standalone (no-op otherwise)
+  syncServiceTimeouts();     // follower: T_JOIN/orphan revert; leader: prune + backstop (no-op otherwise)
 
-  // FOLLOWER: render phase-locked off the shared clock (§3.4) — the stateless renderer makes
-  // "agree on u ⇒ identical frame" true, so the follower just needs the shared u.
+  // FOLLOWER: render phase-locked off the shared clock (§3.4). All state read via the seqlock inside.
   if (syncRole == ROLE_FOLLOWER) {
-    followerHelloTick();                             // ~1 Hz hello so the leader counts/health-tracks us (§6)
-    followerPingTick();                              // ~0.5 Hz round-trip ping for OWD calibration (§4.3)
-    float u = syncFollowerU();
-    applyFollowerParamsAtRender(u);                  // §7: cosmetic immediate, kinematic at the boundary
-    if (followerControl == 1 || followerControl == 2) {
-      if (u < cycleDuration(profiles[mode])) renderFrameAt(gridQuantize(u));   // shared frame grid (§3.4)
-      else { FastLED.clear(); FastLED.show(); }       // rest/idle gap
-    } else {
-      fadeToBlackBy(leds, NUM_LEDS, 40);
-      leds[(int)roundf(CENTER)] = CRGB(0, 40, 0);
-      FastLED.show();
-    }
+    followerRenderStep();
     delay(4);
     return;
   }
@@ -798,14 +788,21 @@ void loop() {
   uint8_t c = control;
   if (c == 1 || c == 2) {               // loop / single — NON-BLOCKING, stateless analytic render
     int64_t now = esp_timer_get_time();
-    if (renderPrevControl != c) { cycleEpochUs = now; renderPrevControl = c; }   // (re)start on control change
+    if (renderPrevControl != c) {                          // (re)start on control change
+      cycleEpochUs = now; renderPrevControl = c;
+      if (syncRole == ROLE_LEADER) leaderMarkEvent();       // #9: burst a beacon so followers switch in sync
+    }
     if (syncRole == ROLE_LEADER) leaderEpochUs = cycleEpochUs;   // beacon carries the render epoch (shared grid)
     uint32_t cd = cycleDuration(profiles[mode]);
     uint32_t total = cd + (c == 1 ? restMs : 0);           // loop adds the dark rest gap; single does not
     float u = (now - cycleEpochUs) / 1000.0f;              // ms since this cycle's u=0
     if (u >= total) {
-      if (c == 1) { cycleEpochUs = now; renderFrameAt(0); }               // next rep (per-cycle epoch re-arm)
-      else { control = 0; renderPrevControl = 0xFF; notifyControl(); }    // single done → idle
+      if (c == 1) {                                                       // next rep: advance epoch by exactly
+        cycleEpochUs += (int64_t)total * 1000;                            // one cycle (keep the grid; §4.5, #11)
+        if (now - cycleEpochUs > (int64_t)total * 2000) cycleEpochUs = now;   // resync if we fell >1 cycle behind
+        if (syncRole == ROLE_LEADER) leaderMarkEvent();                   // #9: new epoch → tell followers now
+        renderFrameAt(0);
+      } else { control = 0; renderPrevControl = 0xFF; notifyControl(); }  // single done → idle
     } else if (u >= cd) {
       FastLED.clear(); FastLED.show();                     // dark rest gap (loop only)
     } else {

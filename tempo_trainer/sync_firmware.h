@@ -18,28 +18,39 @@ struct __attribute__((packed)) SyncBeacon {
   uint8_t  control;         // 0 idle / 1 loop / 2 single / 3 preview
   int64_t  epochEspTimer;   // leader-clock start of the CURRENT cycle
   Profile  active;          // authoritative params in effect this cycle (kinematic + aim2)
+  uint8_t  mode;            // KINEMATIC globals the follower must adopt or it renders the wrong stroke:
+  uint16_t getReadyMs;      //   mode / get-ready / hold / rest all feed positionAt/cycleDuration (§7)
+  uint16_t holdMs;
+  uint16_t restMs;
   uint8_t  brightness;      // cosmetic global — applied immediately by a follower (§7)
   uint8_t  railsLit;        // cosmetic global — applied immediately
   uint8_t  authTag[8];      // keyed MAC over preceding bytes (§4.2.1)
 };
 static const uint8_t BEACON_FLAG_DISBAND = 0x01;
 
+// Follower render state published across cores via a seqlock (declared here so the auto-generated
+// prototypes in the main tab can see the type). Contains Profile, so this header follows Profile.
+struct FollowerPub {
+  int64_t epochUs, offsetUs;
+  Profile params;
+  uint8_t control, mode, brightness, railsLit;
+  uint16_t getReadyMs, holdMs, restMs;
+};
+
 extern volatile SyncRole syncRole;
-extern Profile           followerParams;    // leader's authoritative params, adopted by a follower (§7)
-extern uint8_t           followerControl;   // leader's control state, mirrored by a follower
 extern int64_t           leaderEpochUs;     // shared cycle epoch (leader clock) carried in the beacon
 
-// Called from the main tab (loop / BLE session-command handler / setup).
+// Called from the main tab (loop / BLE session-command handler / setup). The follower render state is
+// now private to sync_firmware.ino behind a seqlock — the main loop just calls followerRenderStep().
 void  syncBecomeLeader(uint16_t sid, const uint8_t key[16], uint8_t channel);
 void  syncJoinSession(uint16_t sid, const uint8_t key[16], uint8_t channel);
 void  syncDisband();
 void  syncRevertToStandalone();
 void  syncServiceTimeouts();
+void  syncDrainDeferred();                    // perform RX-callback-deferred actions (revert/identify) on core 1
 void  syncIdentifyFollower(const uint8_t mac[6]);
-void  applyFollowerParamsAtRender(float u);   // §7: cosmetic immediate, kinematic at cycle boundary
 void  leaderBeaconTick();
-void  followerHelloTick();
-void  followerPingTick();
-float syncFollowerU();
+void  leaderMarkEvent();                      // #9: leader sends an immediate repeated event beacon
+void  followerRenderStep();                   // one follower render tick off the shared clock
 int   syncFollowerStatus(uint8_t *out, int cap);
 void  notifyFollowerStatus();

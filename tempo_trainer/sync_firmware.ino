@@ -41,23 +41,46 @@ static int64_t  leaderZeroSinceUs = 0;             // when the leader last had 0
 static const int OFFSET_WINDOW = 16;
 static int64_t offsetSamples[OFFSET_WINDOW];
 static int     offsetCount = 0, offsetIdx = 0;
-static int64_t clockOffsetUs = 0;               // add to local esp_timer to get leader time
-static int64_t followerEpochUs = 0;             // shared epoch in LEADER time (from the beacon)
-uint8_t        followerControl = 0;             // extern (header)
-Profile        followerParams;                  // extern (header)
+static int64_t clockOffsetUs = 0;               // best clock offset (round-trip θ when available)
+static int64_t owdUs = 0;                       // one-way delay from the round-trip pong (§4.3)
+static bool    haveRtt = false;                 // do we have a round-trip offset yet?
 static int64_t lastBeaconRxUs = 0;
 static uint32_t followerLastSeq = 0;            // replay guard (monotonic seq, §4.2.1)
-static uint8_t  beaconBrightness = 128;         // latest cosmetic globals from the beacon (§7)
-static uint8_t  beaconRails = 1;
-static bool     followerKinInit = false;        // has the follower merged kinematic params at least once?
-static int64_t  lastPingTxUs = 0;               // round-trip OWD: our last ping's tx timestamp
+static bool    followerEverHeard = false;       // #8: T_JOIN fast-revert if we never heard a beacon
+static int64_t followerJoinUs = 0;              // when we became a follower (for the T_JOIN timeout)
+static int64_t lastPingTxUs = 0;                // round-trip OWD: our last ping's tx timestamp
 static uint32_t lastPingMs = 0;
+
+// Deferred actions: SET in the RX callback (core 0), PERFORMED in loop() (core 1, the radio owner).
+static volatile bool pendingRevert = false;     // #1: WiFi teardown must NOT run in the RX callback
+static volatile bool identifyPending = false;   // #5: identifyBlink() (720ms) must NOT run in the callback
+
+// Follower render state, published via a SEQLOCK: single writer (core-0 RX cb), single reader
+// (core-1 loop). Prevents torn reads of the 64-bit clock + the ~24-byte kinematic set (plan §3.5).
+// (FollowerPub is declared in sync_firmware.h so the auto-prototypes resolve.)
+static volatile uint32_t pubSeq = 0;
+static FollowerPub pub = {};
+static inline void publishFollower(const FollowerPub &v) {
+  uint32_t s = pubSeq; pubSeq = s + 1;                   // odd → writing (explicit store: no volatile-++ warning)
+  __sync_synchronize(); pub = v; __sync_synchronize();
+  pubSeq = s + 2;                                        // even → published
+}
+static inline bool readFollower(FollowerPub &out) {
+  for (int t = 0; t < 5; t++) {
+    uint32_t s0 = pubSeq; __sync_synchronize();
+    if (s0 & 1) continue;
+    out = pub; __sync_synchronize();
+    if (pubSeq == s0) return true;
+  }
+  return false;
+}
 
 // ---- Follower health as the leader tracks it (for the …0012 report), §6/§12 ----
 struct FollowerRec { uint8_t mac[6]; int64_t lastHelloUs; bool settled; };
 static const int MAX_FOLLOWERS = 4;
 static FollowerRec followers[MAX_FOLLOWERS];
 static int followerN = 0;
+static portMUX_TYPE followersMux = portMUX_INITIALIZER_UNLOCKED;   // #7: core-0 add vs core-1 prune
 
 // =====================================================================================
 //  Radio bring-up / tear-down (paid ONLY while a set is active).
@@ -112,20 +135,21 @@ void notifyFollowerStatus() {
 
 // Leader-side: track a follower by its source MAC (any packet on our session is a "hello", §6).
 static void leaderTrackFollower(const uint8_t *mac, bool settled) {
-  for (int i = 0; i < followerN; i++) {
-    if (memcmp(followers[i].mac, mac, 6) == 0) {
-      followers[i].lastHelloUs = esp_timer_get_time();
-      followers[i].settled = settled;                     // §13-ask-5: relay the follower's clock-locked flag
-      return;
-    }
+  bool added = false;
+  int64_t now = esp_timer_get_time();
+  portENTER_CRITICAL(&followersMux);                      // #7: guard the shared table vs the core-1 prune
+  int i;
+  for (i = 0; i < followerN; i++) {
+    if (memcmp(followers[i].mac, mac, 6) == 0) { followers[i].lastHelloUs = now; followers[i].settled = settled; break; }
   }
-  if (followerN < MAX_FOLLOWERS) {
+  if (i == followerN && followerN < MAX_FOLLOWERS) {
     memcpy(followers[followerN].mac, mac, 6);
-    followers[followerN].lastHelloUs = esp_timer_get_time();
+    followers[followerN].lastHelloUs = now;
     followers[followerN].settled = settled;
-    followerN++;
-    notifyFollowerStatus();                                // …0012 count rose → the app confirms the join (§12)
+    followerN++; added = true;
   }
+  portEXIT_CRITICAL(&followersMux);
+  if (added) notifyFollowerStatus();                       // BLE notify OUTSIDE the critical section (§12)
 }
 
 // HMAC-SHA256 over the beacon (all bytes before authTag), keyed by the per-session key, truncated to
@@ -158,20 +182,22 @@ static void onSyncRecv(const esp_now_recv_info_t *info, const uint8_t *data, int
     }
     return;
   }
-  // Round-trip OWD pong: refine the clock offset with the NTP four-timestamp formula (§4.3).
+  // Round-trip OWD pong: NTP four-timestamp offset θ + one-way delay δ/2 (§4.3). #3.
   if (syncRole == ROLE_FOLLOWER && len >= 26 && data[0] == 'P' && data[1] == 'O') {
     int64_t followerTx, leaderRx, leaderTx, followerRx = esp_timer_get_time();
     memcpy(&followerTx, data + 2, 8);
     memcpy(&leaderRx, data + 10, 8);
     memcpy(&leaderTx, data + 18, 8);
     if (followerTx == lastPingTxUs) {
-      clockOffsetUs = ((leaderRx - followerTx) + (leaderTx - followerRx)) / 2;   // removes the one-way bias
+      clockOffsetUs = ((leaderRx - followerTx) + (leaderTx - followerRx)) / 2;   // offset θ (bias-cancelled)
+      owdUs         = ((followerRx - followerTx) - (leaderTx - leaderRx)) / 2;   // one-way delay
+      haveRtt = true;
     }
     return;
   }
-  // Addressed identify from the leader: blink only if the target MAC is ours (§13-ask-2).
+  // Addressed identify: blink only if the target MAC is ours — DEFERRED to loop (720 ms blocking). #5.
   if (syncRole == ROLE_FOLLOWER && len >= 8 && data[0] == 'I' && data[1] == 'D') {
-    if (memcmp(data + 2, myMac, 6) == 0) identifyBlink();
+    if (memcmp(data + 2, myMac, 6) == 0) identifyPending = true;
     return;
   }
   if (syncRole != ROLE_FOLLOWER || len < (int)sizeof(SyncBeacon)) return;
@@ -179,21 +205,26 @@ static void onSyncRecv(const esp_now_recv_info_t *info, const uint8_t *data, int
   if (b.magic[0] != 'O' || b.magic[1] != 'T' || b.sessionId != sessionId) return;
   uint8_t tag[8]; computeAuthTag(b, tag);                 // spoof/replay: drop any beacon whose MAC fails (§4.2.1)
   if (memcmp(tag, b.authTag, 8) != 0) return;
-  if (b.seq && b.seq < followerLastSeq && (followerLastSeq - b.seq) < 0x40000000UL) return;  // replay (stale seq)
+  if (b.seq && b.seq < followerLastSeq && (followerLastSeq - b.seq) < 256) return;   // #4: small replay window
   followerLastSeq = b.seq;
-  if (b.flags & BEACON_FLAG_DISBAND) { syncRevertToStandalone(); return; }
+  if (b.flags & BEACON_FLAG_DISBAND) { pendingRevert = true; return; }   // #1: DEFER teardown out of the callback
 
   int64_t rx = esp_timer_get_time();
-  offsetSamples[offsetIdx] = (b.txEspTimer) - rx;         // OWD calibration refines this (§4.3)
+  offsetSamples[offsetIdx] = b.txEspTimer + owdUs - rx;   // #3: sample = tx + OWD − rx (§4.3)
   offsetIdx = (offsetIdx + 1) % OFFSET_WINDOW;
   if (offsetCount < OFFSET_WINDOW) offsetCount++;
-  clockOffsetUs   = minFilteredOffset();
-  followerEpochUs = b.epochEspTimer;
-  followerControl = b.control;
-  followerParams  = b.active;                            // kinematic staged; merged at boundary (§7)
-  beaconBrightness = b.brightness;                       // cosmetic — applied immediately in the render loop
-  beaconRails      = b.railsLit;
-  lastBeaconRxUs  = rx;
+
+  FollowerPub v;                                          // #6: publish the whole delta atomically (seqlock)
+  v.epochUs    = b.epochEspTimer;
+  v.offsetUs   = haveRtt ? clockOffsetUs : minFilteredOffset();   // #3: round-trip wins; min-filter is fallback
+  v.params     = b.active;
+  v.control    = b.control;
+  v.mode       = b.mode;                                  // #2: adopt the leader's mode/getReady/hold/rest
+  v.getReadyMs = b.getReadyMs; v.holdMs = b.holdMs; v.restMs = b.restMs;
+  v.brightness = b.brightness; v.railsLit = b.railsLit;
+  publishFollower(v);
+  lastBeaconRxUs = rx;
+  followerEverHeard = true;
 }
 
 // Follower: send a ~1 Hz hello so the leader can count/health-track it. Called from loop().
@@ -220,38 +251,56 @@ void followerPingTick() {
   esp_now_send(BROADCAST_ADDR, pkt, sizeof(pkt));
 }
 
-// §7 follower ingestion: cosmetic fields apply IMMEDIATELY; kinematic fields merge only at a cycle
-// boundary (u wrap) so a mid-cycle kinematic change can't jump the comet's phase. Runs on core 1.
-void applyFollowerParamsAtRender(float u) {
-  if (brightness != beaconBrightness) { brightness = beaconBrightness; FastLED.setBrightness(brightness); }
-  railsLit = beaconRails;
-  profiles[mode].aim2Enabled = followerParams.aim2Enabled;     // aim2 position/enable are cosmetic
-  profiles[mode].aim2Led     = followerParams.aim2Led;
-  static float lastU = 1e9f;
-  if (!followerKinInit || u < lastU) {                         // first frame after join, or a cycle wrap
-    profiles[mode].backswingMs = followerParams.backswingMs;
-    profiles[mode].downswingMs = followerParams.downswingMs;
-    profiles[mode].reachLeds   = followerParams.reachLeds;
-    profiles[mode].topHoldMs   = followerParams.topHoldMs;
-    profiles[mode].release     = followerParams.release;
-    profiles[mode].followMs    = followerParams.followMs;
-    profiles[mode].aim2When    = followerParams.aim2When;      // aim2When is kinematic (timeline)
+// §7 follower ingestion: cosmetic (brightness/rails/aim2) applies IMMEDIATELY; kinematic (mode,
+// get-ready/hold/rest, and the Profile timeline) merges only at a cycle boundary (u wrap) so a
+// mid-cycle change can't jump the comet's phase. Reads the seqlock snapshot; runs on core 1.
+static float followerLastU = 1e9f;
+static bool  followerKinInit = false;
+static void applyFollowerParamsFrom(const FollowerPub &fp, float u) {
+  if (brightness != fp.brightness) { brightness = fp.brightness; FastLED.setBrightness(brightness); }
+  railsLit = fp.railsLit;
+  if (!followerKinInit || u < followerLastU) {                 // first synced frame, or a cycle wrap
+    mode = fp.mode; getReadyMs = fp.getReadyMs; holdMs = fp.holdMs; restMs = fp.restMs;
+    profiles[mode] = fp.params;                                // whole timeline (kinematic + aim2) at boundary
     followerKinInit = true;
+  } else {
+    profiles[mode].aim2Enabled = fp.params.aim2Enabled;        // aim2 position/enable are cosmetic → immediate
+    profiles[mode].aim2Led     = fp.params.aim2Led;
   }
-  lastU = u;
+  followerLastU = u;
 }
 
-// Shared cycle-time u (ms) for a follower: (localNow + offset) − sharedEpoch. Stateless (§3.4).
-float syncFollowerU() {
-  int64_t sharedNow = esp_timer_get_time() + clockOffsetUs;
-  int64_t du = sharedNow - followerEpochUs;
-  return (du < 0 ? 0.0f : du / 1000.0f);
+// Perform actions deferred out of the RX callback, on core 1 (the radio owner). #1/#5.
+void syncDrainDeferred() {
+  if (pendingRevert)   { pendingRevert = false;   syncRevertToStandalone(); }
+  if (identifyPending) { identifyPending = false; identifyBlink(); }
+}
+
+// One follower render tick: send hello/ping, snapshot the shared state (seqlock), render off the
+// shared clock. Called from loop() (core 1). Stateless renderer ⇒ agree on u ⇒ identical frame (§3.4).
+void followerRenderStep() {
+  followerHelloTick();
+  followerPingTick();
+  FollowerPub fp;
+  if (!readFollower(fp)) return;                               // torn read this tick — retry next
+  int64_t sharedNow = esp_timer_get_time() + fp.offsetUs;
+  float u = (sharedNow < fp.epochUs) ? 0.0f : (sharedNow - fp.epochUs) / 1000.0f;
+  applyFollowerParamsFrom(fp, u);
+  if (fp.control == 1 || fp.control == 2) {
+    if (u < cycleDuration(profiles[mode])) renderFrameAt(gridQuantize(u));   // shared frame grid (§3.4)
+    else { FastLED.clear(); FastLED.show(); }                 // rest/idle gap
+  } else {
+    fadeToBlackBy(leds, NUM_LEDS, 40);
+    leds[(int)roundf(CENTER)] = CRGB(0, 40, 0);
+    FastLED.show();
+  }
 }
 
 // =====================================================================================
 //  Leader: broadcast the beacon on the shared grid.
 // =====================================================================================
 static void fillBeacon(SyncBeacon &b, uint8_t flags) {
+  memset(&b, 0, sizeof(b));                              // zero Profile padding → deterministic HMAC (#12)
   b.magic[0] = 'O'; b.magic[1] = 'T'; b.version = 1;
   b.sessionId = sessionId; b.flags = flags;
   b.seq = ++beaconSeq;
@@ -259,18 +308,27 @@ static void fillBeacon(SyncBeacon &b, uint8_t flags) {
   b.control = control;
   b.epochEspTimer = leaderEpochUs;
   b.active = profiles[mode];
+  b.mode = mode; b.getReadyMs = getReadyMs; b.holdMs = holdMs; b.restMs = restMs;   // KINEMATIC globals (§7)
   b.brightness = brightness; b.railsLit = railsLit;      // cosmetic globals (§7)
-  memset(b.authTag, 0, sizeof(b.authTag));
   computeAuthTag(b, b.authTag);                          // keyed MAC over all preceding bytes (§4.2.1)
 }
+
+static volatile bool leaderEventPending = false;         // #9: control/param/boundary change → burst now
+void leaderMarkEvent() { leaderEventPending = true; }     // set from any context; sent from loop (core 1)
 
 void leaderBeaconTick() {
   if (syncRole != ROLE_LEADER || !wifiUp) return;
   uint32_t nowMs = millis();
-  if (nowMs - lastBeaconMs < BEACON_KEEPALIVE_MS) return;
+  bool event = leaderEventPending;
+  if (event) leaderEventPending = false;
+  if (!event && nowMs - lastBeaconMs < BEACON_KEEPALIVE_MS) return;   // else keepalive throttle
   lastBeaconMs = nowMs;
-  SyncBeacon b; fillBeacon(b, 0);
-  esp_now_send(BROADCAST_ADDR, (const uint8_t *)&b, sizeof(b));
+  int repeats = event ? 4 : 1;                            // event beacons repeated 4× over a few hundred µs (§4.4)
+  for (int i = 0; i < repeats; i++) {
+    SyncBeacon b; fillBeacon(b, 0);                       // fresh seq/tx each repeat (feeds the offset filter)
+    esp_now_send(BROADCAST_ADDR, (const uint8_t *)&b, sizeof(b));
+    if (i + 1 < repeats) delayMicroseconds(800);
+  }
 }
 
 // =====================================================================================
@@ -289,8 +347,10 @@ void syncBecomeLeader(uint16_t sid, const uint8_t key[16], uint8_t channel) {
 void syncJoinSession(uint16_t sid, const uint8_t key[16], uint8_t channel) {
   sessionId = sid; memcpy(sessionKey, key, 16); chOp = channel;
   syncRole = ROLE_FOLLOWER;
-  offsetCount = 0; offsetIdx = 0; clockOffsetUs = 0;
-  followerKinInit = false;                              // re-merge kinematic params on the first synced frame
+  offsetCount = 0; offsetIdx = 0; clockOffsetUs = 0; owdUs = 0; haveRtt = false;
+  followerLastSeq = 0;                                  // #4: don't carry a prior session's seq (reboot/rejoin)
+  followerEverHeard = false; followerJoinUs = esp_timer_get_time();   // #8
+  followerKinInit = false; followerLastU = 1e9f;        // re-merge kinematic params on the first synced frame
   lastBeaconRxUs = esp_timer_get_time();
   syncWifiUp();
   esp_now_register_recv_cb(onSyncRecv);
@@ -311,7 +371,7 @@ void syncDisband() {
 void syncRevertToStandalone() {
   syncWifiDown();
   syncRole = ROLE_STANDALONE;
-  followerN = 0;
+  portENTER_CRITICAL(&followersMux); followerN = 0; portEXIT_CRITICAL(&followersMux);   // #7
 }
 
 // Two-threshold never-stuck revert (§6/§8): a follower that loses beacons past T_ORPHAN
@@ -319,22 +379,28 @@ void syncRevertToStandalone() {
 static const int64_t T_ORPHAN_US = 20 * 1000000LL;       // a few s beyond DEGRADE_S (bench-tuned)
 static const int64_t T_HELLO_US   = 20 * 1000000LL;      // ≥ T_ORPHAN so leader teardown ≥ follower revert (§6)
 static const int64_t T_JOIN_BACKSTOP_US = 8 * 1000000LL; // leader-with-zero-followers self-revert (§13-ask-6)
+static const int64_t T_JOIN_US    = 4 * 1000000LL;       // #8: never-heard-a-beacon fast revert (§6/§8)
 void syncServiceTimeouts() {
   int64_t now = esp_timer_get_time();
-  if (syncRole == ROLE_FOLLOWER && now - lastBeaconRxUs > T_ORPHAN_US) {
-    syncRevertToStandalone();
+  if (syncRole == ROLE_FOLLOWER) {
+    // #8: never synced (app crashed between joinSession and becomeLeader) → fast revert, don't sit dark 20 s.
+    if (!followerEverHeard && now - followerJoinUs > T_JOIN_US) { syncRevertToStandalone(); return; }
+    if (now - lastBeaconRxUs > T_ORPHAN_US) { syncRevertToStandalone(); return; }   // was-synced → full coast
     return;
   }
   if (syncRole == ROLE_LEADER) {
     // Prune followers whose hello timed out (they orphaned) and re-report the count (§6/§12).
     int before = followerN;
+    portENTER_CRITICAL(&followersMux);                    // #7: guard vs the core-0 add
     for (int i = 0; i < followerN; ) {
       if (now - followers[i].lastHelloUs > T_HELLO_US) {
         for (int j = i; j < followerN - 1; j++) followers[j] = followers[j + 1];
         followerN--;
       } else i++;
     }
-    if (followerN != before) notifyFollowerStatus();
+    int after = followerN;
+    portEXIT_CRITICAL(&followersMux);
+    if (after != before) notifyFollowerStatus();          // BLE notify OUTSIDE the critical section
     // Zero-follower backstop: a leader that never gets (or loses all) followers reverts to standalone
     // so the app crashing mid-add can't strand a WiFi-up zombie leader (§13-ask-6 / plan §5.3-5).
     if (followerN > 0) leaderZeroSinceUs = 0;
@@ -346,16 +412,21 @@ void syncServiceTimeouts() {
 }
 
 // Serialize the …0012 follower-status blob: [count][ (handle:6 mac)(flags:1) ]* (§12).
+// Snapshots the table under the lock (#7) — memcpy only, no BLE inside the critical section.
 int syncFollowerStatus(uint8_t *out, int cap) {
   if (cap < 1) return 0;
-  int n = 0; out[n++] = (uint8_t)followerN;
+  int64_t now = esp_timer_get_time();
+  int n = 0;
+  portENTER_CRITICAL(&followersMux);
+  out[n++] = (uint8_t)followerN;
   for (int i = 0; i < followerN && n + 7 <= cap; i++) {
     memcpy(out + n, followers[i].mac, 6); n += 6;
-    int64_t age = esp_timer_get_time() - followers[i].lastHelloUs;
+    int64_t age = now - followers[i].lastHelloUs;
     uint8_t flags = 0;
     if (age > 15 * 1000000LL) flags |= 0x01;             // re-linking (stale age, §13-ask-1)
     if (followers[i].settled)  flags |= 0x02;            // clock locked (§13-ask-5)
     out[n++] = flags;
   }
+  portEXIT_CRITICAL(&followersMux);
   return n;
 }
