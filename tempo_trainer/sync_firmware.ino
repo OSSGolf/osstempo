@@ -50,6 +50,8 @@ static uint32_t followerLastSeq = 0;            // replay guard (monotonic seq, 
 static uint8_t  beaconBrightness = 128;         // latest cosmetic globals from the beacon (§7)
 static uint8_t  beaconRails = 1;
 static bool     followerKinInit = false;        // has the follower merged kinematic params at least once?
+static int64_t  lastPingTxUs = 0;               // round-trip OWD: our last ping's tx timestamp
+static uint32_t lastPingMs = 0;
 
 // ---- Follower health as the leader tracks it (for the …0012 report), §6/§12 ----
 struct FollowerRec { uint8_t mac[6]; int64_t lastHelloUs; bool settled; };
@@ -143,7 +145,28 @@ static void computeAuthTag(const SyncBeacon &b, uint8_t out[8]) {
 static void onSyncRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if (len < 3) return;
   if (syncRole == ROLE_LEADER) {
-    if (data[0] == 'H' && data[1] == 'L') leaderTrackFollower(info->src_addr, data[2] != 0);
+    if (data[0] == 'H' && data[1] == 'L') { leaderTrackFollower(info->src_addr, data[2] != 0); return; }
+    if (data[0] == 'P' && data[1] == 'G' && len >= 10) {          // round-trip OWD ping → echo a pong (§4.3)
+      int64_t leaderRx = esp_timer_get_time(), followerTx;
+      memcpy(&followerTx, data + 2, 8);
+      int64_t leaderTx = esp_timer_get_time();
+      uint8_t pong[26] = { 'P', 'O' };
+      memcpy(pong + 2, &followerTx, 8);
+      memcpy(pong + 10, &leaderRx, 8);
+      memcpy(pong + 18, &leaderTx, 8);
+      esp_now_send(BROADCAST_ADDR, pong, sizeof(pong));
+    }
+    return;
+  }
+  // Round-trip OWD pong: refine the clock offset with the NTP four-timestamp formula (§4.3).
+  if (syncRole == ROLE_FOLLOWER && len >= 26 && data[0] == 'P' && data[1] == 'O') {
+    int64_t followerTx, leaderRx, leaderTx, followerRx = esp_timer_get_time();
+    memcpy(&followerTx, data + 2, 8);
+    memcpy(&leaderRx, data + 10, 8);
+    memcpy(&leaderTx, data + 18, 8);
+    if (followerTx == lastPingTxUs) {
+      clockOffsetUs = ((leaderRx - followerTx) + (leaderTx - followerRx)) / 2;   // removes the one-way bias
+    }
     return;
   }
   // Addressed identify from the leader: blink only if the target MAC is ours (§13-ask-2).
@@ -183,6 +206,18 @@ void followerHelloTick() {
   uint8_t settled = (offsetCount >= OFFSET_WINDOW) ? 1 : 0;   // clock-locked once the min-filter fills (§13-ask-5)
   uint8_t hello[3] = { 'H', 'L', settled };
   esp_now_send(BROADCAST_ADDR, hello, sizeof(hello));
+}
+
+// Follower: ~0.5 Hz round-trip ping so the leader can echo timestamps for OWD calibration (§4.3).
+void followerPingTick() {
+  if (syncRole != ROLE_FOLLOWER || !wifiUp) return;
+  uint32_t nowMs = millis();
+  if (nowMs - lastPingMs < 2000) return;
+  lastPingMs = nowMs;
+  lastPingTxUs = esp_timer_get_time();
+  uint8_t pkt[10] = { 'P', 'G' };
+  memcpy(pkt + 2, &lastPingTxUs, 8);
+  esp_now_send(BROADCAST_ADDR, pkt, sizeof(pkt));
 }
 
 // §7 follower ingestion: cosmetic fields apply IMMEDIATELY; kinematic fields merge only at a cycle

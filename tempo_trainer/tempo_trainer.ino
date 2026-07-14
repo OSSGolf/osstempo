@@ -780,6 +780,7 @@ void loop() {
   // "agree on u ⇒ identical frame" true, so the follower just needs the shared u.
   if (syncRole == ROLE_FOLLOWER) {
     followerHelloTick();                             // ~1 Hz hello so the leader counts/health-tracks us (§6)
+    followerPingTick();                              // ~0.5 Hz round-trip ping for OWD calibration (§4.3)
     float u = syncFollowerU();
     applyFollowerParamsAtRender(u);                  // §7: cosmetic immediate, kinematic at the boundary
     if (followerControl == 1 || followerControl == 2) {

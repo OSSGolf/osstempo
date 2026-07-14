@@ -39,6 +39,7 @@ void  syncIdentifyFollower(const uint8_t mac[6]);
 void  applyFollowerParamsAtRender(float u);   // §7: cosmetic immediate, kinematic at cycle boundary
 void  leaderBeaconTick();
 void  followerHelloTick();
+void  followerPingTick();
 float syncFollowerU();
 int   syncFollowerStatus(uint8_t *out, int cap);
 void  notifyFollowerStatus();
