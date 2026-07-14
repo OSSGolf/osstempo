@@ -39,6 +39,10 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <Preferences.h>
+#include <esp_timer.h>          // 64-bit µs clock for the analytic, stateless renderer (plan §4.1)
+#include <WiFi.h>               // multi-stick sync radios (ESP-NOW); OFF until a set is formed (§2.1)
+#include <esp_wifi.h>
+#include <esp_now.h>
 
 // ---------- Board select ----------
 // One sketch, two builds. Pick ONE board below (or pass -DBOARD_DIG2GO / -DBOARD_DIY_ESP32
@@ -88,6 +92,8 @@ Profile profiles[2] = {
   /* PUTT */ { 700, 350, 58, 0,   0,  350,  0, 70, 1 },   // 2:1 to impact, pendular, 350ms follow
   /* FULL */ { 900, 300, 60, 150, 55, 300,  0, 70, 1 },   // 3:1 to impact, lag, 300ms follow; aim2 off, 2 LEDs follow-side, at top
 };
+
+#include "sync_firmware.h"   // multi-stick sync interface (needs Profile, declared just above)
 
 volatile uint8_t mode    = MODE_PUTT;   // selected mode (persisted)
 volatile uint8_t control = 1;           // 0 idle, 1 loop, 2 single, 3 preview (runtime only, not saved)
@@ -153,12 +159,15 @@ volatile uint32_t lastWriteMs = 0;
 #define CH_AIM2EN       "6e40000f-b5a3-f393-e0a9-e50e24dcca9e"
 #define CH_AIM2POS      "6e400010-b5a3-f393-e0a9-e50e24dcca9e"
 #define CH_AIM2WHEN     "6e400011-b5a3-f393-e0a9-e50e24dcca9e"
+#define CH_FOLLOWERSTAT "6e400012-b5a3-f393-e0a9-e50e24dcca9e"   // follower-status: read + NOTIFY (§12)
+#define CH_SESSIONCMD   "6e400013-b5a3-f393-e0a9-e50e24dcca9e"   // session-command: write, opcode-tagged (§6)
 
 // Per-mode characteristic handles, so a mode switch can refresh their stored
 // values to the newly-active profile (lets a BLE client read correct values).
 BLECharacteristic *chBack = nullptr, *chDown = nullptr, *chReach = nullptr, *chTop = nullptr,
                   *chRelease = nullptr, *chFollow = nullptr, *chControl = nullptr,
-                  *chAim2En = nullptr, *chAim2Pos = nullptr, *chAim2When = nullptr;
+                  *chAim2En = nullptr, *chAim2Pos = nullptr, *chAim2When = nullptr,
+                  *chFollowerStat = nullptr;    // …0012 follower-status (read + NOTIFY)
 
 static void chSetU16(BLECharacteristic *ch, uint16_t val) {
   if (!ch) return;
@@ -186,6 +195,40 @@ void notifyControl() {
   uint8_t b = control;
   chControl->setValue(&b, 1);
   chControl->notify();
+}
+
+// Blink the strip briefly so a user can bind a roster row to this physical stick (Blink-to-find, §6).
+void identifyBlink() {
+  for (int k = 0; k < 3; k++) {
+    fill_solid(leds, NUM_LEDS, CRGB(255, 255, 255)); FastLED.show(); delay(120);
+    FastLED.clear(true); delay(120);
+  }
+}
+
+// Parse an opcode-tagged …0013 session command (matches the iOS CoreBluetoothTransport contract).
+//   1 becomeLeader [1][key:16][CH_OP:1]   2 joinSession [2][key:16][CH_OP:1]   3 disband   4 identify
+void handleSessionCmd(const String &v) {
+  if (v.length() < 1) return;
+  uint8_t op = (uint8_t)v[0];
+  if ((op == 1 || op == 2) && v.length() >= 17) {
+    uint8_t key[16];
+    for (int i = 0; i < 16; i++) key[i] = (uint8_t)v[1 + i];
+    uint8_t ch = (v.length() >= 18) ? (uint8_t)v[17] : 6;
+    uint16_t sid = (uint16_t)key[0] | ((uint16_t)key[1] << 8);   // both sides derive sessionId from the key
+    if (op == 1) syncBecomeLeader(sid, key, ch);
+    else         syncJoinSession(sid, key, ch);
+  } else if (op == 3) {
+    syncDisband();
+  } else if (op == 4) {
+    // identify: empty target = blink this (clock) stick; else relay to the follower MAC (§13-ask-2).
+    if (v.length() >= 7) {
+      uint8_t mac[6];
+      for (int i = 0; i < 6; i++) mac[i] = (uint8_t)v[1 + i];
+      syncIdentifyFollower(mac);
+    } else {
+      identifyBlink();
+    }
+  }
 }
 
 // Keep the purple dot off any marker LED (impact / amber / red extents) for a given
@@ -221,24 +264,25 @@ class CharCB : public BLECharacteristicCallbacks {
     };
 
     // control is runtime-only (not persisted) so it never boots into preview.
-    if (uuid == CH_CONTROL) { control = constrain((int)(uint8_t)v[0], 0, 3); return; }
+    if (uuid == CH_CONTROL) { control = min((int)(uint8_t)v[0], 3); return; }   // value is 0..255, so only the upper clamp is needed
+    if (uuid == CH_SESSIONCMD) { handleSessionCmd(v); return; }                 // opcode-tagged session command (§6)
 
     if (uuid == CH_BACKSWING)       profiles[mode].backswingMs = constrain(u16(), 100, 5000);
     else if (uuid == CH_DOWNSWING)  profiles[mode].downswingMs = constrain(u16(), 100, 5000);
     else if (uuid == CH_REACH)    { profiles[mode].reachLeds   = constrain((int)(uint8_t)v[0], 1, (int)HALF);
                                     profiles[mode].aim2Led = avoidAim2Overlap(profiles[mode].aim2Led, profiles[mode].reachLeds); }
     else if (uuid == CH_TOPHOLD)    profiles[mode].topHoldMs   = constrain(u16(), 0, 2000);
-    else if (uuid == CH_RELEASE)    profiles[mode].release     = constrain((int)(uint8_t)v[0], 0, 100);
+    else if (uuid == CH_RELEASE)    profiles[mode].release     = min((int)(uint8_t)v[0], 100);
     else if (uuid == CH_FOLLOW)     profiles[mode].followMs    = constrain(u16(), 0, 10000);
-    else if (uuid == CH_MODE)     { mode = constrain((int)(uint8_t)v[0], 0, 1); refreshModeChars(); }
+    else if (uuid == CH_MODE)     { mode = min((int)(uint8_t)v[0], 1); refreshModeChars(); }
     else if (uuid == CH_BRIGHTNESS){ brightness = (uint8_t)v[0]; FastLED.setBrightness(brightness); }
     else if (uuid == CH_GETREADY)   getReadyMs = constrain(u16(), 0, 10000);
     else if (uuid == CH_HOLD)        holdMs     = constrain(u16(), 0, 10000);
     else if (uuid == CH_REST)        restMs     = constrain(u16(), 0, 20000);
-    else if (uuid == CH_RAILS)       railsLit   = constrain((int)(uint8_t)v[0], 0, 1);
-    else if (uuid == CH_AIM2EN)   profiles[mode].aim2Enabled = constrain((int)(uint8_t)v[0], 0, 1);
+    else if (uuid == CH_RAILS)       railsLit   = min((int)(uint8_t)v[0], 1);
+    else if (uuid == CH_AIM2EN)   profiles[mode].aim2Enabled = min((int)(uint8_t)v[0], 1);
     else if (uuid == CH_AIM2POS)  profiles[mode].aim2Led     = avoidAim2Overlap((int)(uint8_t)v[0], profiles[mode].reachLeds);
-    else if (uuid == CH_AIM2WHEN) profiles[mode].aim2When    = constrain((int)(uint8_t)v[0], 0, 3);
+    else if (uuid == CH_AIM2WHEN) profiles[mode].aim2When    = min((int)(uint8_t)v[0], 3);
     else return;                    // unknown characteristic: nothing to persist
 
     paramsDirty = true;             // mark for debounced save in loop()
@@ -251,7 +295,7 @@ void setupBLE() {
   BLEServer *server = BLEDevice::createServer();
   // 16 characteristics need ~34 GATT handles (2 each + 1 for control's CCCD + 1 service);
   // the default (15) silently truncates the table after ~7 chars, so allocate generously.
-  BLEService *svc = server->createService(BLEUUID(SVC_UUID), 40);
+  BLEService *svc = server->createService(BLEUUID(SVC_UUID), 48);   // 18 chars (+…0012/…0013) need more handles
 
   auto mk = [&](const char *uuid, uint16_t init, bool twoByte, bool notify = false) {
     uint32_t props = BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE;
@@ -280,6 +324,8 @@ void setupBLE() {
   chAim2En   = mk(CH_AIM2EN,   profiles[mode].aim2Enabled, false);
   chAim2Pos  = mk(CH_AIM2POS,  profiles[mode].aim2Led,     false);
   chAim2When = mk(CH_AIM2WHEN, profiles[mode].aim2When,    false);
+  chFollowerStat = mk(CH_FOLLOWERSTAT, 0, false, true);   // …0012 READ + NOTIFY (follower-status)
+  mk(CH_SESSIONCMD, 0, false);                            // …0013 WRITE (opcode-tagged session command)
 
   svc->start();
   BLEAdvertising *adv = BLEDevice::getAdvertising();
@@ -601,21 +647,172 @@ void setup() {
   Serial.println("Tempo Trainer ready - pair over BLE");
 }
 
-void loop() {
-  // Debounced persist: batch rapid writes (e.g. live-preview slider) into one save.
-  if (paramsDirty && millis() - lastWriteMs > 1500) { paramsDirty = false; saveParams(); }  // clear first: a write during save re-dirties
+// ============================================================================
+//  Analytic, STATELESS renderer (Phase 1 — the linchpin for sync, plan §3.2).
+//  Pure functions of cycle-time `u` (ms) and the active params: identical `u`
+//  ⇒ identical frame on any node, with NO static state, NO fadeToBlackBy IIR,
+//  NO millis(). `positionAt` is golden-parity-verified (firmware_tests/).
+// ============================================================================
 
-  if (control == 1) {                   // continuous loop
-    runActiveStroke();
-    uint32_t t0 = millis();             // rest gap, but stay responsive to control changes
-    while (control == 1 && millis() - t0 < restMs) delay(20);
-  } else if (control == 2) {            // single stroke
-    runActiveStroke();
-    if (control == 2) {                 // don't clobber a control write that arrived mid-stroke
-      control = 0;
-      notifyControl();                  // tell subscribers the stroke finished (back to idle)
+// Total rendered cycle time (ms), excluding the dark rest gap (handled by the loop epoch).
+uint32_t cycleDuration(const Profile &p) {
+  return (uint32_t)getReadyMs + p.backswingMs + p.topHoldMs + p.downswingMs + p.followMs + holdMs;
+}
+
+// Shared frame grid (plan §3.4): quantize cycle-time to FRAME_MS so all nodes compute the SAME frame
+// index k at a shared instant → identical LED buffer, making show()/quantization common-mode (0 skew).
+static const float FRAME_MS = 8.0f;                       // 125 Hz grid; tightenable toward ~6 ms
+static inline float gridQuantize(float u) { return floorf(u / FRAME_MS) * FRAME_MS; }
+
+// Head position (fractional LED index) at cycle-time u. Ported verbatim from the pre-refactor
+// segment math (runStroke / runStrokeFull) and verified in firmware_tests/golden_kinematics.c.
+float positionAt(float u, const Profile &p) {
+  float amp = p.reachLeds;
+  if (mode == MODE_FULL) {
+    float center = CENTER, backRed = NUM_LEDS - 1, backAmber = CENTER + amp, folRed = 0.0f;
+    float dOut = backRed - center, dIn = backRed - backAmber;
+    uint32_t bOut = (uint32_t)(p.backswingMs * (dOut / (dOut + dIn))), bIn = p.backswingMs - bOut;
+    uint32_t dBack = (uint32_t)(p.downswingMs * (dIn / (dIn + dOut))), dDown = p.downswingMs - dBack;
+    if (u < getReadyMs) return center;                                                   u -= getReadyMs;
+    if (u < bOut)  { float ph = u / (float)bOut;  return center    + (backRed - center)    * easeInOut(ph); } u -= bOut;
+    if (u < bIn)   { float ph = u / (float)bIn;   return backRed   + (backAmber - backRed) * easeInOut(ph); } u -= bIn;
+    if (u < p.topHoldMs) return backAmber;                                               u -= p.topHoldMs;
+    if (u < dBack) { float ph = u / (float)dBack; return backAmber + (backRed - backAmber)* easeInOut(ph); } u -= dBack;
+    if (u < dDown) { float ph = u / (float)dDown; return backRed   + (center - backRed)   * dropEase(ph, p.release / 100.0f); } u -= dDown;
+    if (u < p.followMs) { float ph = u / (float)p.followMs; return center + (folRed - center) * easeOut(ph); }
+    return (p.followMs > 0 ? folRed : center);
+  } else {
+    if (u < getReadyMs) return CENTER;                                                   u -= getReadyMs;
+    if (u < p.backswingMs) { float ph = u / (float)p.backswingMs; return CENTER + amp * sinf(ph * PI / 2.0f); } u -= p.backswingMs;
+    if (u < p.downswingMs) { float ph = u / (float)p.downswingMs; return CENTER + amp * (1.0f - dropEase(ph, p.release / 100.0f)); } u -= p.downswingMs;
+    if (u < p.followMs)    { float ph = u / (float)p.followMs;    return CENTER - amp * easeOut(ph); }
+    return CENTER + (p.followMs > 0 ? -amp : 0.0f);
+  }
+}
+
+// Travel direction from SEGMENT IDENTITY (not history / not a finite difference) — deterministic
+// at u=0, edges, and zero-velocity turnarounds (plan §3.2). +1 higher index, -1 lower, 0 still.
+int strokeDirAt(float u, const Profile &p) {
+  float amp = p.reachLeds;
+  if (mode == MODE_FULL) {
+    float dOut = (NUM_LEDS - 1) - CENTER, dIn = (NUM_LEDS - 1) - (CENTER + amp);
+    uint32_t bOut = (uint32_t)(p.backswingMs * (dOut / (dOut + dIn))), bIn = p.backswingMs - bOut;
+    uint32_t dBack = (uint32_t)(p.downswingMs * (dIn / (dIn + dOut))), dDown = p.downswingMs - dBack;
+    if (u < getReadyMs) return 0;      u -= getReadyMs;
+    if (u < bOut) return 1;            u -= bOut;
+    if (u < bIn) return -1;            u -= bIn;
+    if (u < p.topHoldMs) return 0;     u -= p.topHoldMs;
+    if (u < dBack) return 1;           u -= dBack;
+    if (u < dDown) return -1;          u -= dDown;
+    if (u < p.followMs) return -1;
+    return 0;
+  } else {
+    if (u < getReadyMs) return 0;      u -= getReadyMs;
+    if (u < p.backswingMs) return 1;   u -= p.backswingMs;
+    if (u < p.downswingMs) return -1;  u -= p.downswingMs;
+    if (u < p.followMs) return -1;
+    return 0;
+  }
+}
+
+// The full-swing purple dot lights from its aim2When boundary onward (plan §4.5), as a function of u.
+static bool aim2LitAt(float u, const Profile &p) {
+  uint32_t tTop = (uint32_t)getReadyMs + p.backswingMs;         // top of backswing
+  uint32_t tDown = tTop + p.topHoldMs;                          // start of downswing
+  uint32_t tImpact = tDown + p.downswingMs;                     // impact
+  switch (p.aim2When) {
+    case 0: return u >= getReadyMs;   // address (after get-ready)
+    case 1: return u >= tTop;
+    case 2: return u >= tDown;
+    case 3: return u >= tImpact;
+  }
+  return false;
+}
+
+// Analytic comet: bright head + fading tail trailing OPPOSITE `dir`. Closed-form in (pos,dir),
+// replacing the IIR "soft trail" — visually equivalent, stateless (plan §3.2).
+static void drawCometAnalytic(float pos, int dir, int loIdx, int hiIdx) {
+  if (dir == 0) dir = 1;                                        // still: default trail orientation
+  int base = (int)floorf(pos);
+  for (int i = -1; i <= TAIL; i++) {                            // i=-1 leading pixel, i>0 trailing tail
+    int idx = base - dir * i;
+    if (idx < loIdx || idx > hiIdx || idx < 0 || idx >= NUM_LEDS) continue;
+    uint8_t b = (i <= 0) ? 255 : (uint8_t)(255.0f * (1.0f - (float)i / (TAIL + 1)));
+    leds[idx] += CRGB(b, b, b);
+  }
+}
+
+// Draw the whole frame for cycle-time u. Full clear + repaint (no temporal state).
+void renderFrameAt(float u) {
+  const Profile &p = profiles[mode];
+  float amp = p.reachLeds;
+  int centerIdx = (int)roundf(CENTER);
+  FastLED.clear();
+  if (railsLit) {
+    if (centerIdx >= 0 && centerIdx < NUM_LEDS) leds[centerIdx] = BALL_COLOR;
+    int amberIdx = (int)roundf(CENTER + amp);
+    if (amberIdx >= 0 && amberIdx < NUM_LEDS) leds[amberIdx] = TARGET_COLOR;
+    if (mode == MODE_FULL) { leds[NUM_LEDS - 1] = RED_COLOR; leds[0] = RED_COLOR; }
+  }
+  if (mode == MODE_FULL && p.aim2Enabled && aim2LitAt(u, p)) {
+    int a = constrain((int)p.aim2Led, 1, NUM_LEDS - 2);
+    leds[a] = AIM2_COLOR;
+  }
+  drawCometAnalytic(positionAt(u, p), strokeDirAt(u, p), 0, NUM_LEDS - 1);
+  FastLED.show();
+}
+
+// Cycle epoch for the non-blocking render loop (esp_timer µs at the current cycle's u=0).
+static int64_t cycleEpochUs = 0;
+static uint8_t  renderPrevControl = 0xFF;
+
+void loop() {
+  // Debounced persist, GATED TO IDLE so a flash cache-stall never lands mid-stroke (plan §3.5).
+  // Followers hold live params in RAM and never commit (plan §3.5), so gate on standalone/leader.
+  if (paramsDirty && control == 0 && syncRole != ROLE_FOLLOWER && millis() - lastWriteMs > 1500) {
+    paramsDirty = false; saveParams();
+  }
+
+  leaderBeaconTick();        // leader: broadcast the SyncBeacon at 4 Hz (no-op otherwise)
+  syncServiceTimeouts();     // follower: orphan-timeout revert to standalone (no-op otherwise)
+
+  // FOLLOWER: render phase-locked off the shared clock (§3.4) — the stateless renderer makes
+  // "agree on u ⇒ identical frame" true, so the follower just needs the shared u.
+  if (syncRole == ROLE_FOLLOWER) {
+    followerHelloTick();                             // ~1 Hz hello so the leader counts/health-tracks us (§6)
+    float u = syncFollowerU();
+    applyFollowerParamsAtRender(u);                  // §7: cosmetic immediate, kinematic at the boundary
+    if (followerControl == 1 || followerControl == 2) {
+      if (u < cycleDuration(profiles[mode])) renderFrameAt(gridQuantize(u));   // shared frame grid (§3.4)
+      else { FastLED.clear(); FastLED.show(); }       // rest/idle gap
+    } else {
+      fadeToBlackBy(leds, NUM_LEDS, 40);
+      leds[(int)roundf(CENTER)] = CRGB(0, 40, 0);
+      FastLED.show();
     }
-  } else if (control == 3) {            // preview: live dot map for the active mode
+    delay(4);
+    return;
+  }
+
+  uint8_t c = control;
+  if (c == 1 || c == 2) {               // loop / single — NON-BLOCKING, stateless analytic render
+    int64_t now = esp_timer_get_time();
+    if (renderPrevControl != c) { cycleEpochUs = now; renderPrevControl = c; }   // (re)start on control change
+    if (syncRole == ROLE_LEADER) leaderEpochUs = cycleEpochUs;   // beacon carries the render epoch (shared grid)
+    uint32_t cd = cycleDuration(profiles[mode]);
+    uint32_t total = cd + (c == 1 ? restMs : 0);           // loop adds the dark rest gap; single does not
+    float u = (now - cycleEpochUs) / 1000.0f;              // ms since this cycle's u=0
+    if (u >= total) {
+      if (c == 1) { cycleEpochUs = now; renderFrameAt(0); }               // next rep (per-cycle epoch re-arm)
+      else { control = 0; renderPrevControl = 0xFF; notifyControl(); }    // single done → idle
+    } else if (u >= cd) {
+      FastLED.clear(); FastLED.show();                     // dark rest gap (loop only)
+    } else {
+      renderFrameAt(gridQuantize(u));                      // shared frame grid (§3.4)
+    }
+    delay(4);                           // ~250 Hz service; the grid-paced core-1 render task lands with sync (plan §3.5)
+  } else if (c == 3) {                  // preview: live dot map for the active mode
+    renderPrevControl = 0xFF;
     float amp = profiles[mode].reachLeds;
     if (mode == MODE_FULL) {
       // Include the purple dot when enabled so it can be positioned live in preview.
@@ -632,6 +829,7 @@ void loop() {
     }
     delay(30);
   } else {                              // idle: dim center marker so you can line up
+    renderPrevControl = 0xFF;
     fadeToBlackBy(leds, NUM_LEDS, 40);
     leds[(int)roundf(CENTER)] = CRGB(0, 40, 0);
     FastLED.show();
