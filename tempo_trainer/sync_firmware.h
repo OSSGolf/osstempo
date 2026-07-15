@@ -27,6 +27,9 @@ struct __attribute__((packed)) SyncBeacon {
   uint8_t  authTag[8];      // keyed MAC over preceding bytes (§4.2.1)
 };
 static const uint8_t BEACON_FLAG_DISBAND = 0x01;
+// The wire format must be byte-identical across BOTH builds (dig2go ↔ generic ESP32) — the struct has
+// no board-conditional fields, so it is; this guards the ESP-NOW payload limit and future edits.
+static_assert(sizeof(SyncBeacon) <= 250, "SyncBeacon exceeds the ESP-NOW 250-byte payload limit");
 
 // Follower render state published across cores via a seqlock (declared here so the auto-generated
 // prototypes in the main tab can see the type). Contains Profile, so this header follows Profile.

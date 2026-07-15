@@ -1,3 +1,8 @@
+// ⚠️  DEPRECATED SNAPSHOT — DOES NOT INCLUDE THE MULTI-STICK SYNC MODULE.
+//     Flashing this will NOT sync with another stick. Build the canonical multi-file sketch instead:
+//       arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnings all \
+//         --build-property "compiler.cpp.extra_flags=-DBOARD_DIG2GO"   (or -DBOARD_DIY_ESP32)  tempo_trainer
+//     (tempo_trainer/ pulls in sync_firmware.ino/.h; this single-file copy predates the sync feature.)
 /*
  * Tempo Trainer  -  ESP32 (classic WROOM-32, 30-pin) + WS2812B
  *

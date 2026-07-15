@@ -291,9 +291,19 @@ class CharCB : public BLECharacteristicCallbacks {
   }
 };
 
+// Re-advertise on disconnect so a stick stays reconnectable after the phone (or the add-flow's transient
+// candidate link) drops — EXCEPT a synced follower, which deliberately goes BLE-quiet while in a set
+// (plan §2.1). It re-advertises on revert (syncRevertToStandalone) so it can be re-added.
+class ServerCB : public BLEServerCallbacks {
+  void onDisconnect(BLEServer *s) override {
+    if (syncRole != ROLE_FOLLOWER) BLEDevice::startAdvertising();
+  }
+};
+
 void setupBLE() {
   BLEDevice::init("PuttTempo");
   BLEServer *server = BLEDevice::createServer();
+  server->setCallbacks(new ServerCB());
   // 16 characteristics need ~34 GATT handles (2 each + 1 for control's CCCD + 1 service);
   // the default (15) silently truncates the table after ~7 chars, so allocate generously.
   BLEService *svc = server->createService(BLEUUID(SVC_UUID), 48);   // 18 chars (+…0012/…0013) need more handles

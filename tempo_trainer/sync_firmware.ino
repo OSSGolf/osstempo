@@ -369,9 +369,16 @@ void syncDisband() {
 }
 
 void syncRevertToStandalone() {
+  bool wasFollower = (syncRole == ROLE_FOLLOWER);
   syncWifiDown();
   syncRole = ROLE_STANDALONE;
   portENTER_CRITICAL(&followersMux); followerN = 0; portEXIT_CRITICAL(&followersMux);   // #7
+  if (wasFollower) {                                    // a follower's RAM params were the LEADER's — restore ours
+    loadParams();                                       // (matters cross-build: a dig2go follower of a generic
+    FastLED.setBrightness(brightness);                  //  leader must return to ITS own saved config on disband)
+    followerKinInit = false;
+    BLEDevice::startAdvertising();                       // was BLE-quiet while synced (§2.1) → advertise so it's re-addable
+  }
 }
 
 // Two-threshold never-stuck revert (§6/§8): a follower that loses beacons past T_ORPHAN
