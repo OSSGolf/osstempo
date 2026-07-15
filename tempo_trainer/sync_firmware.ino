@@ -20,7 +20,9 @@
 // ---- Ephemeral role (RAM only; default standalone at every boot). Non-static: matches the
 //      extern declarations in sync_firmware.h so the main tab can read them. ----
 volatile SyncRole syncRole = ROLE_STANDALONE;
-static bool     wifiUp = false;
+static volatile bool wifiUp = false;            // up on core 0 (becomeLeader/join), down on core 1 (revert)
+void syncDoDisband();                            // core-1 disband worker (defined below; called before its def)
+void leaderServicePongs();                       // core-1 pong TX (defined below)
 static uint8_t  chOp = 6;                       // operating channel handed by the app (§5.1)
 static uint8_t  sessionKey[16] = {0};           // per-session key (RAM; authenticates the beacon, §4.2.1)
 static uint16_t sessionId = 0;
@@ -46,14 +48,32 @@ static int64_t owdUs = 0;                       // one-way delay from the round-
 static bool    haveRtt = false;                 // do we have a round-trip offset yet?
 static int64_t lastBeaconRxUs = 0;
 static uint32_t followerLastSeq = 0;            // replay guard (monotonic seq, §4.2.1)
-static bool    followerEverHeard = false;       // #8: T_JOIN fast-revert if we never heard a beacon
+static bool    followerEverHeard = false;       // T_JOIN fast-revert if we never heard a beacon
 static int64_t followerJoinUs = 0;              // when we became a follower (for the T_JOIN timeout)
-static int64_t lastPingTxUs = 0;                // round-trip OWD: our last ping's tx timestamp
+static volatile uint32_t lastPingId = 0;        // our outstanding ping's id: 32-bit ⇒ atomic cross-core match (no torn 64-bit read)
+static uint32_t pingIdNext = 0;                 // core-1 monotonic ping id, seeded per-follower from the MAC
 static uint32_t lastPingMs = 0;
+
+// Follower clock slew (§4.3/§13): ramp small offset corrections across frames, snap on first lock / big
+// jump, so a fresh estimate every ~2 s can't hop the comet mid-stroke. Constants are bench-tunable.
+static bool    followerOffsetInit = false;
+static int64_t appliedOffsetUs = 0;
+static const int64_t OFFSET_SLEW_STEP_US = 200;      // max correction per render tick (~250 Hz)
+static const int64_t OFFSET_SNAP_US      = 3000;     // beyond this, snap (first lock / leader reboot)
 
 // Deferred actions: SET in the RX callback (core 0), PERFORMED in loop() (core 1, the radio owner).
 static volatile bool pendingRevert = false;     // #1: WiFi teardown must NOT run in the RX callback
 static volatile bool identifyPending = false;   // #5: identifyBlink() (720ms) must NOT run in the callback
+static volatile bool disbandPending = false;    // #4/#6: disband beacon-storm + teardown belong on core 1
+static volatile bool statusDirty = false;       // #1: the …0012 BLE notify must NOT run in the RX callback
+
+// Round-trip pong requests handed from the RX callback (core 0) to loop (core 1) so the pong is TXed
+// OFF the WiFi RX callback (#2). SPSC ring under a portMUX; leaderTx is stamped at actual send time.
+struct PongReq { uint32_t pingId; int64_t followerTx; int64_t leaderRx; };
+static const int PONG_Q_CAP = 4;
+static PongReq pongQueue[PONG_Q_CAP];
+static int pongCount = 0;                        // guarded by pongMux (the spinlock is the barrier), like followerN
+static portMUX_TYPE pongMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Follower render state, published via a SEQLOCK: single writer (core-0 RX cb), single reader
 // (core-1 loop). Prevents torn reads of the 64-bit clock + the ~24-byte kinematic set (plan §3.5).
@@ -118,9 +138,12 @@ static void syncWifiDown() {
 // =====================================================================================
 //  Follower: receive + estimate the shared clock.
 // =====================================================================================
-static int64_t minFilteredOffset() {
+// Pick the LEAST-delayed sample (§4.3). Each sample = txEspTimer + owd − rx = θ − (delay − owd), which
+// DECREASES as queueing delay grows — so the least-delayed packet is the MAXIMUM sample (closest to the
+// true offset θ), not the minimum. (Selecting the min would lock onto the most coex-delayed packet.)
+static int64_t bestOffsetSample() {
   int64_t m = offsetSamples[0];
-  for (int i = 1; i < offsetCount; i++) if (offsetSamples[i] < m) m = offsetSamples[i];
+  for (int i = 1; i < offsetCount; i++) if (offsetSamples[i] > m) m = offsetSamples[i];
   return m;
 }
 
@@ -149,7 +172,7 @@ static void leaderTrackFollower(const uint8_t *mac, bool settled) {
     followerN++; added = true;
   }
   portEXIT_CRITICAL(&followersMux);
-  if (added) notifyFollowerStatus();                       // BLE notify OUTSIDE the critical section (§12)
+  if (added) statusDirty = true;                           // #1: defer the BLE notify to loop (core 1), not this RX callback
 }
 
 // HMAC-SHA256 over the beacon (all bytes before authTag), keyed by the per-session key, truncated to
@@ -170,25 +193,24 @@ static void onSyncRecv(const esp_now_recv_info_t *info, const uint8_t *data, int
   if (len < 3) return;
   if (syncRole == ROLE_LEADER) {
     if (data[0] == 'H' && data[1] == 'L') { leaderTrackFollower(info->src_addr, data[2] != 0); return; }
-    if (data[0] == 'P' && data[1] == 'G' && len >= 10) {          // round-trip OWD ping → echo a pong (§4.3)
-      int64_t leaderRx = esp_timer_get_time(), followerTx;
-      memcpy(&followerTx, data + 2, 8);
-      int64_t leaderTx = esp_timer_get_time();
-      uint8_t pong[26] = { 'P', 'O' };
-      memcpy(pong + 2, &followerTx, 8);
-      memcpy(pong + 10, &leaderRx, 8);
-      memcpy(pong + 18, &leaderTx, 8);
-      esp_now_send(BROADCAST_ADDR, pong, sizeof(pong));
+    if (data[0] == 'P' && data[1] == 'G' && len >= 14) {          // round-trip OWD ping → ENQUEUE a pong (#2)
+      int64_t leaderRx = esp_timer_get_time();                    // stamp T2 in-callback; T3 stamped at TX time
+      PongReq req; memcpy(&req.pingId, data + 2, 4); memcpy(&req.followerTx, data + 6, 8); req.leaderRx = leaderRx;
+      portENTER_CRITICAL(&pongMux);
+      if (pongCount < PONG_Q_CAP) pongQueue[pongCount++] = req;   // drop on overflow: the follower re-pings in ~2 s
+      portEXIT_CRITICAL(&pongMux);
     }
     return;
   }
-  // Round-trip OWD pong: NTP four-timestamp offset θ + one-way delay δ/2 (§4.3). #3.
-  if (syncRole == ROLE_FOLLOWER && len >= 26 && data[0] == 'P' && data[1] == 'O') {
-    int64_t followerTx, leaderRx, leaderTx, followerRx = esp_timer_get_time();
-    memcpy(&followerTx, data + 2, 8);
-    memcpy(&leaderRx, data + 10, 8);
-    memcpy(&leaderTx, data + 18, 8);
-    if (followerTx == lastPingTxUs) {
+  // Round-trip OWD pong: NTP four-timestamp offset θ + one-way delay δ/2 (§4.3). Match on the 32-bit
+  // pingId (atomic, #9) and take T1 from the echoed followerTx — no torn 64-bit read of our own state.
+  if (syncRole == ROLE_FOLLOWER && len >= 30 && data[0] == 'P' && data[1] == 'O') {
+    uint32_t pingId; int64_t followerTx, leaderRx, leaderTx, followerRx = esp_timer_get_time();
+    memcpy(&pingId, data + 2, 4);
+    memcpy(&followerTx, data + 6, 8);
+    memcpy(&leaderRx, data + 14, 8);
+    memcpy(&leaderTx, data + 22, 8);
+    if (pingId == lastPingId) {
       clockOffsetUs = ((leaderRx - followerTx) + (leaderTx - followerRx)) / 2;   // offset θ (bias-cancelled)
       owdUs         = ((followerRx - followerTx) - (leaderTx - leaderRx)) / 2;   // one-way delay
       haveRtt = true;
@@ -206,17 +228,22 @@ static void onSyncRecv(const esp_now_recv_info_t *info, const uint8_t *data, int
   uint8_t tag[8]; computeAuthTag(b, tag);                 // spoof/replay: drop any beacon whose MAC fails (§4.2.1)
   if (memcmp(tag, b.authTag, 8) != 0) return;
   if (b.seq && b.seq < followerLastSeq && (followerLastSeq - b.seq) < 256) return;   // #4: small replay window
+  // #5: a large backward seq jump = the leader REBOOTED (its esp_timer restarted near 0). Drop every stale
+  // clock estimate and re-lock from scratch, else we'd render off the old leader's uptime for ~2 s.
+  if (b.seq < followerLastSeq && (followerLastSeq - b.seq) >= 256) {
+    haveRtt = false; owdUs = 0; offsetCount = 0; offsetIdx = 0; followerOffsetInit = false;
+  }
   followerLastSeq = b.seq;
   if (b.flags & BEACON_FLAG_DISBAND) { pendingRevert = true; return; }   // #1: DEFER teardown out of the callback
 
   int64_t rx = esp_timer_get_time();
-  offsetSamples[offsetIdx] = b.txEspTimer + owdUs - rx;   // #3: sample = tx + OWD − rx (§4.3)
+  offsetSamples[offsetIdx] = b.txEspTimer + owdUs - rx;   // sample = tx + OWD − rx (§4.3)
   offsetIdx = (offsetIdx + 1) % OFFSET_WINDOW;
   if (offsetCount < OFFSET_WINDOW) offsetCount++;
 
   FollowerPub v;                                          // #6: publish the whole delta atomically (seqlock)
   v.epochUs    = b.epochEspTimer;
-  v.offsetUs   = haveRtt ? clockOffsetUs : minFilteredOffset();   // #3: round-trip wins; min-filter is fallback
+  v.offsetUs   = haveRtt ? clockOffsetUs : bestOffsetSample();   // #3: round-trip wins; least-delayed sample is the fallback
   v.params     = b.active;
   v.control    = b.control;
   v.mode       = b.mode;                                  // #2: adopt the leader's mode/getReady/hold/rest
@@ -245,10 +272,33 @@ void followerPingTick() {
   uint32_t nowMs = millis();
   if (nowMs - lastPingMs < 2000) return;
   lastPingMs = nowMs;
-  lastPingTxUs = esp_timer_get_time();
-  uint8_t pkt[10] = { 'P', 'G' };
-  memcpy(pkt + 2, &lastPingTxUs, 8);
+  int64_t followerTx = esp_timer_get_time();
+  uint32_t pid = ++pingIdNext;               // 32-bit id the pong echoes back — atomic cross-core match (#9)
+  lastPingId = pid;
+  uint8_t pkt[14] = { 'P', 'G' };
+  memcpy(pkt + 2, &pid, 4);
+  memcpy(pkt + 6, &followerTx, 8);
   esp_now_send(BROADCAST_ADDR, pkt, sizeof(pkt));
+}
+
+// Leader: TX any queued round-trip pongs from loop (core 1), stamping T3 (leaderTx) at actual send time
+// so the four-timestamp offset stays correct despite the off-callback deferral (#2). Called each loop.
+void leaderServicePongs() {
+  if (syncRole != ROLE_LEADER || !wifiUp) return;
+  for (;;) {
+    PongReq req; bool have = false;
+    portENTER_CRITICAL(&pongMux);
+    if (pongCount > 0) { req = pongQueue[0]; for (int i = 1; i < pongCount; i++) pongQueue[i - 1] = pongQueue[i]; pongCount--; have = true; }
+    portEXIT_CRITICAL(&pongMux);
+    if (!have) break;
+    int64_t leaderTx = esp_timer_get_time();
+    uint8_t pong[30] = { 'P', 'O' };
+    memcpy(pong + 2,  &req.pingId, 4);
+    memcpy(pong + 6,  &req.followerTx, 8);
+    memcpy(pong + 14, &req.leaderRx, 8);
+    memcpy(pong + 22, &leaderTx, 8);
+    esp_now_send(BROADCAST_ADDR, pong, sizeof(pong));
+  }
 }
 
 // §7 follower ingestion: cosmetic (brightness/rails/aim2) applies IMMEDIATELY; kinematic (mode,
@@ -272,24 +322,41 @@ static void applyFollowerParamsFrom(const FollowerPub &fp, float u) {
 
 // Perform actions deferred out of the RX callback, on core 1 (the radio owner). #1/#5.
 void syncDrainDeferred() {
+  leaderServicePongs();                                       // #2: TX queued round-trip pongs off the RX callback
+  if (statusDirty)     { statusDirty = false;     notifyFollowerStatus(); }   // #1: deferred …0012 BLE notify
+  if (disbandPending)  { disbandPending = false;  syncDoDisband(); }          // #4/#6: deferred disband storm + teardown
   if (pendingRevert)   { pendingRevert = false;   syncRevertToStandalone(); }
   if (identifyPending) { identifyPending = false; identifyBlink(); }
 }
 
 // One follower render tick: send hello/ping, snapshot the shared state (seqlock), render off the
 // shared clock. Called from loop() (core 1). Stateless renderer ⇒ agree on u ⇒ identical frame (§3.4).
+static float followerLastFrameU = -1.0f;                      // frame-skip: last quantized u rendered (-2 = blanked)
 void followerRenderStep() {
   followerHelloTick();
   followerPingTick();
   FollowerPub fp;
   if (!readFollower(fp)) return;                               // torn read this tick — retry next
-  int64_t sharedNow = esp_timer_get_time() + fp.offsetUs;
+  // #8: slew toward the latest offset estimate; snap on first lock / big jump so it can't hop mid-stroke.
+  int64_t target = fp.offsetUs;
+  if (!followerOffsetInit) { appliedOffsetUs = target; followerOffsetInit = true; }
+  else {
+    int64_t d = target - appliedOffsetUs;
+    if (d > OFFSET_SNAP_US || d < -OFFSET_SNAP_US) appliedOffsetUs = target;   // large discontinuity → snap
+    else if (d >  OFFSET_SLEW_STEP_US) appliedOffsetUs += OFFSET_SLEW_STEP_US; // small correction → ramp
+    else if (d < -OFFSET_SLEW_STEP_US) appliedOffsetUs -= OFFSET_SLEW_STEP_US;
+    else appliedOffsetUs = target;
+  }
+  int64_t sharedNow = esp_timer_get_time() + appliedOffsetUs;
   float u = (sharedNow < fp.epochUs) ? 0.0f : (sharedNow - fp.epochUs) / 1000.0f;
   applyFollowerParamsFrom(fp, u);
   if (fp.control == 1 || fp.control == 2) {
-    if (u < cycleDuration(profiles[mode])) renderFrameAt(gridQuantize(u));   // shared frame grid (§3.4)
-    else { FastLED.clear(); FastLED.show(); }                 // rest/idle gap
+    if (u < cycleDuration(profiles[mode])) {
+      float qu = gridQuantize(u);                             // shared frame grid (§3.4); skip duplicate frames
+      if (qu != followerLastFrameU) { followerLastFrameU = qu; renderFrameAt(qu); }
+    } else if (followerLastFrameU != -2.0f) { followerLastFrameU = -2.0f; FastLED.clear(); FastLED.show(); }   // rest/idle gap
   } else {
+    followerLastFrameU = -1.0f;
     fadeToBlackBy(leds, NUM_LEDS, 40);
     leds[(int)roundf(CENTER)] = CRGB(0, 40, 0);
     FastLED.show();
@@ -335,6 +402,9 @@ void leaderBeaconTick() {
 //  App-brokered lifecycle — called by the …0013 BLE session-command handler.
 // =====================================================================================
 void syncBecomeLeader(uint16_t sid, const uint8_t key[16], uint8_t channel) {
+  // #7: re-sending becomeLeader to a live leader is a no-op (plan §6/§22) — must not reset the shared
+  // epoch or wipe the follower table, which would desync the set and trip the zero-follower backstop.
+  if (syncRole == ROLE_LEADER && wifiUp) return;
   sessionId = sid; memcpy(sessionKey, key, 16); chOp = channel;
   syncRole = ROLE_LEADER;
   leaderEpochUs = esp_timer_get_time();
@@ -348,16 +418,24 @@ void syncJoinSession(uint16_t sid, const uint8_t key[16], uint8_t channel) {
   sessionId = sid; memcpy(sessionKey, key, 16); chOp = channel;
   syncRole = ROLE_FOLLOWER;
   offsetCount = 0; offsetIdx = 0; clockOffsetUs = 0; owdUs = 0; haveRtt = false;
+  followerOffsetInit = false; followerLastFrameU = -1.0f;   // #8: re-lock the slewed clock from scratch
   followerLastSeq = 0;                                  // #4: don't carry a prior session's seq (reboot/rejoin)
-  followerEverHeard = false; followerJoinUs = esp_timer_get_time();   // #8
+  followerEverHeard = false; followerJoinUs = esp_timer_get_time();
   followerKinInit = false; followerLastU = 1e9f;        // re-merge kinematic params on the first synced frame
   lastBeaconRxUs = esp_timer_get_time();
-  syncWifiUp();
+  syncWifiUp();                                         // fills myMac; seed a per-follower ping-id base so two
+  pingIdNext = ((uint32_t)myMac[2] << 24) | ((uint32_t)myMac[3] << 16)   // followers can't collide on the id
+             | ((uint32_t)myMac[4] << 8)  |  (uint32_t)myMac[5];
   esp_now_register_recv_cb(onSyncRecv);
   // BLE is dropped by the app side after this write; the stick now renders off the beacon.
 }
 
-void syncDisband() {
+// Called from the BLE session-command handler (core 0) — DEFER the beacon-storm + radio teardown to
+// loop (core 1) so esp_now_deinit() never races the WiFi RX callback and never blocks the BLE task (#4/#6).
+void syncDisband() { disbandPending = true; }
+
+// Performed on core 1 via syncDrainDeferred: broadcast repeated DISBAND, then revert.
+void syncDoDisband() {
   if (syncRole == ROLE_LEADER && wifiUp) {
     for (int i = 0; i < 5; i++) {                         // repeated DISBAND (§4.4/§6)
       SyncBeacon b; fillBeacon(b, BEACON_FLAG_DISBAND);

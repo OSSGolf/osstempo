@@ -250,6 +250,66 @@ int avoidAim2Overlap(int idx, int reachLeds) {
   return idx;
 }
 
+// ---------- Kinematic staging (plan §7) ----------
+// A running cycle must be phase-stable: kinematic edits (the timeline that feeds positionAt /
+// cycleDuration — backswing/downswing/reach/release/follow/topHold/getReady/hold/rest/mode/aim2When)
+// are STAGED here on a BLE write and merged into the live globals only at the next cycle boundary, so
+// the comet never teleports mid-stroke and the leader matches what its followers render (they merge at
+// the same boundary). Cosmetic edits (brightness/rails/aim2 enable+position) stay immediate. Restores
+// the pre-refactor snapshot-at-stroke-start. onWrite runs on the BLE task (core 0); the merge runs in
+// loop() (core 1) — so the buffer is guarded by a portMUX.
+struct PendingKin {
+  bool     dirty = false;
+  uint8_t  targetMode = 0;                 // the mode the staged Profile fields apply to
+  uint16_t backswingMs = 0, downswingMs = 0, topHoldMs = 0, followMs = 0;
+  uint8_t  reachLeds = 0, release = 0, aim2When = 0;
+  uint8_t  modeVal = 0;
+  uint16_t getReadyVal = 0, holdVal = 0, restVal = 0;
+};
+static PendingKin pendingKin;
+static portMUX_TYPE pendingMux = portMUX_INITIALIZER_UNLOCKED;
+
+// Seed the pending buffer from the current live kinematic state on the first stage of a cycle. Caller
+// holds pendingMux. Subsequent stages this cycle overwrite individual fields, so the boundary merge is
+// field-level (only touches kinematic fields → a live cosmetic edit can never be reverted, §7).
+static void pendingSeed() {
+  if (pendingKin.dirty) return;
+  pendingKin.targetMode  = mode;
+  pendingKin.backswingMs = profiles[mode].backswingMs;
+  pendingKin.downswingMs = profiles[mode].downswingMs;
+  pendingKin.topHoldMs   = profiles[mode].topHoldMs;
+  pendingKin.followMs    = profiles[mode].followMs;
+  pendingKin.reachLeds   = profiles[mode].reachLeds;
+  pendingKin.release     = profiles[mode].release;
+  pendingKin.aim2When    = profiles[mode].aim2When;
+  pendingKin.modeVal     = mode;
+  pendingKin.getReadyVal = getReadyMs;
+  pendingKin.holdVal     = holdMs;
+  pendingKin.restVal     = restMs;
+  pendingKin.dirty       = true;
+}
+
+// Apply staged kinematic fields to the live globals at a cycle boundary (or when the stick stops).
+static void pendingMerge() {
+  portENTER_CRITICAL(&pendingMux);
+  if (pendingKin.dirty) {
+    Profile &a = profiles[pendingKin.targetMode];
+    a.backswingMs = pendingKin.backswingMs;
+    a.downswingMs = pendingKin.downswingMs;
+    a.topHoldMs   = pendingKin.topHoldMs;
+    a.followMs    = pendingKin.followMs;
+    a.reachLeds   = pendingKin.reachLeds;
+    a.release     = pendingKin.release;
+    a.aim2When    = pendingKin.aim2When;
+    mode       = pendingKin.modeVal;
+    getReadyMs = pendingKin.getReadyVal;
+    holdMs     = pendingKin.holdVal;
+    restMs     = pendingKin.restVal;
+    pendingKin.dirty = false;
+  }
+  portEXIT_CRITICAL(&pendingMux);
+}
+
 // ---------- BLE write handler ----------
 // Per-mode params write into the *active* profile (profiles[mode]).
 class CharCB : public BLECharacteristicCallbacks {
@@ -267,27 +327,49 @@ class CharCB : public BLECharacteristicCallbacks {
     if (uuid == CH_CONTROL) { control = min((int)(uint8_t)v[0], 3); if (syncRole == ROLE_LEADER) leaderMarkEvent(); return; }
     if (uuid == CH_SESSIONCMD) { handleSessionCmd(v); return; }                 // opcode-tagged session command (§6)
 
-    if (uuid == CH_BACKSWING)       profiles[mode].backswingMs = constrain(u16(), 100, 5000);
-    else if (uuid == CH_DOWNSWING)  profiles[mode].downswingMs = constrain(u16(), 100, 5000);
-    else if (uuid == CH_REACH)    { profiles[mode].reachLeds   = constrain((int)(uint8_t)v[0], 1, (int)HALF);
-                                    profiles[mode].aim2Led = avoidAim2Overlap(profiles[mode].aim2Led, profiles[mode].reachLeds); }
-    else if (uuid == CH_TOPHOLD)    profiles[mode].topHoldMs   = constrain(u16(), 0, 2000);
-    else if (uuid == CH_RELEASE)    profiles[mode].release     = min((int)(uint8_t)v[0], 100);
-    else if (uuid == CH_FOLLOW)     profiles[mode].followMs    = constrain(u16(), 0, 10000);
-    else if (uuid == CH_MODE)     { mode = min((int)(uint8_t)v[0], 1); refreshModeChars(); }
-    else if (uuid == CH_BRIGHTNESS){ brightness = (uint8_t)v[0]; FastLED.setBrightness(brightness); }
-    else if (uuid == CH_GETREADY)   getReadyMs = constrain(u16(), 0, 10000);
-    else if (uuid == CH_HOLD)        holdMs     = constrain(u16(), 0, 10000);
-    else if (uuid == CH_REST)        restMs     = constrain(u16(), 0, 20000);
-    else if (uuid == CH_RAILS)       railsLit   = min((int)(uint8_t)v[0], 1);
-    else if (uuid == CH_AIM2EN)   profiles[mode].aim2Enabled = min((int)(uint8_t)v[0], 1);
-    else if (uuid == CH_AIM2POS)  profiles[mode].aim2Led     = avoidAim2Overlap((int)(uint8_t)v[0], profiles[mode].reachLeds);
-    else if (uuid == CH_AIM2WHEN) profiles[mode].aim2When    = min((int)(uint8_t)v[0], 3);
+    bool running  = (control == 1 || control == 2);   // §7: stage kinematic edits mid-run, apply live otherwise
+    bool cosmetic = false;                            // did we change a beacon-carried cosmetic field?
+
+    // Stage a kinematic field while running (merged at the next boundary), else write it live. `live`
+    // is volatile& so it binds both the volatile timing globals and the non-volatile profiles[] fields.
+    auto stageU16 = [&](volatile uint16_t &live, uint16_t &pend, uint16_t val) {
+      if (running) { portENTER_CRITICAL(&pendingMux); pendingSeed(); pend = val; portEXIT_CRITICAL(&pendingMux); }
+      else live = val;
+    };
+    auto stageU8 = [&](volatile uint8_t &live, uint8_t &pend, uint8_t val) {
+      if (running) { portENTER_CRITICAL(&pendingMux); pendingSeed(); pend = val; portEXIT_CRITICAL(&pendingMux); }
+      else live = val;
+    };
+
+    if (uuid == CH_BACKSWING)     { uint16_t val = constrain(u16(), 100, 5000); stageU16(profiles[mode].backswingMs, pendingKin.backswingMs, val); chSetU16(c, val); }
+    else if (uuid == CH_DOWNSWING){ uint16_t val = constrain(u16(), 100, 5000); stageU16(profiles[mode].downswingMs, pendingKin.downswingMs, val); chSetU16(c, val); }
+    else if (uuid == CH_REACH)    { uint8_t r = constrain((int)(uint8_t)v[0], 1, (int)HALF);
+                                    stageU8(profiles[mode].reachLeds, pendingKin.reachLeds, r);   // reach = kinematic
+                                    profiles[mode].aim2Led = avoidAim2Overlap(profiles[mode].aim2Led, r);   // aim2 pos = cosmetic
+                                    chSetU8(c, r); chSetU8(chAim2Pos, profiles[mode].aim2Led); cosmetic = true; }
+    else if (uuid == CH_TOPHOLD)  { uint16_t val = constrain(u16(), 0, 2000);  stageU16(profiles[mode].topHoldMs, pendingKin.topHoldMs, val); chSetU16(c, val); }
+    else if (uuid == CH_RELEASE)  { uint8_t val = min((int)(uint8_t)v[0], 100); stageU8(profiles[mode].release, pendingKin.release, val); chSetU8(c, val); }
+    else if (uuid == CH_FOLLOW)   { uint16_t val = constrain(u16(), 0, 10000); stageU16(profiles[mode].followMs, pendingKin.followMs, val); chSetU16(c, val); }
+    else if (uuid == CH_MODE)     { uint8_t m = min((int)(uint8_t)v[0], 1);
+                                    if (running) { portENTER_CRITICAL(&pendingMux); pendingSeed(); pendingKin.modeVal = m; portEXIT_CRITICAL(&pendingMux); }
+                                    else { mode = m; refreshModeChars(); }      // live mode switch refreshes per-mode chars
+                                    chSetU8(c, m); }
+    else if (uuid == CH_GETREADY) { uint16_t val = constrain(u16(), 0, 10000); stageU16(getReadyMs, pendingKin.getReadyVal, val); chSetU16(c, val); }
+    else if (uuid == CH_HOLD)     { uint16_t val = constrain(u16(), 0, 10000); stageU16(holdMs, pendingKin.holdVal, val); chSetU16(c, val); }
+    else if (uuid == CH_REST)     { uint16_t val = constrain(u16(), 0, 20000); stageU16(restMs, pendingKin.restVal, val); chSetU16(c, val); }
+    else if (uuid == CH_AIM2WHEN) { uint8_t w = min((int)(uint8_t)v[0], 3);    stageU8(profiles[mode].aim2When, pendingKin.aim2When, w); chSetU8(c, w); }
+    // --- cosmetic (immediate; beacon-propagated, §7) ---
+    else if (uuid == CH_BRIGHTNESS){ brightness = (uint8_t)v[0]; FastLED.setBrightness(brightness); chSetU8(c, brightness); cosmetic = true; }
+    else if (uuid == CH_RAILS)    { railsLit = min((int)(uint8_t)v[0], 1); chSetU8(c, railsLit); cosmetic = true; }
+    else if (uuid == CH_AIM2EN)   { uint8_t e = min((int)(uint8_t)v[0], 1); profiles[mode].aim2Enabled = e; chSetU8(c, e); cosmetic = true; }
+    else if (uuid == CH_AIM2POS)  { uint8_t pos = avoidAim2Overlap((int)(uint8_t)v[0], profiles[mode].reachLeds); profiles[mode].aim2Led = pos; chSetU8(c, pos); cosmetic = true; }
     else return;                    // unknown characteristic: nothing to persist
 
-    paramsDirty = true;             // mark for debounced save in loop()
+    paramsDirty = true;             // mark for debounced save in loop() (staged edits flush before the save fires)
     lastWriteMs = millis();
-    if (syncRole == ROLE_LEADER) leaderMarkEvent();   // #9: propagate the param change to followers now (§4.4)
+    // Cosmetic changes take effect immediately, so burst a beacon now; kinematic changes are staged and
+    // propagate when the leader bursts at its own cycle boundary (§4.4/§7), keeping the set phase-locked.
+    if (cosmetic && syncRole == ROLE_LEADER) leaderMarkEvent();
   }
 };
 
@@ -769,6 +851,16 @@ void renderFrameAt(float u) {
     int a = constrain((int)p.aim2Led, 1, NUM_LEDS - 2);
     leds[a] = AIM2_COLOR;
   }
+  // Get-ready countdown (u < getReadyMs): pulse the green impact LED smoothly at 1 Hz ("3-2-1-go")
+  // over the lit aim dots — no moving comet yet. Closed-form in u (was the blocking countdownPulses),
+  // so every node renders the identical pulse at the shared instant.
+  if (u < getReadyMs) {
+    float local = u - floorf(u / 1000.0f) * 1000.0f;      // ms into the current 1 s pulse
+    float lvl   = sinf((local / 1000.0f) * PI);           // smooth 0 -> 1 -> 0
+    if (centerIdx >= 0 && centerIdx < NUM_LEDS) leds[centerIdx] = CRGB(0, (uint8_t)(220.0f * lvl), 0);
+    FastLED.show();
+    return;
+  }
   drawCometAnalytic(positionAt(u, p), strokeDirAt(u, p), 0, NUM_LEDS - 1);
   FastLED.show();
 }
@@ -795,11 +887,17 @@ void loop() {
     return;
   }
 
+  static float lastFrameU = -1.0f;      // frame-skip: last quantized u rendered (-2 = rest-gap blanked)
   uint8_t c = control;
+  // Not running (idle/preview): flush any staged kinematic edits to the live globals so preview/next-run
+  // and the debounced NVS save see the latest values (§7).
+  if (c != 1 && c != 2 && pendingKin.dirty) pendingMerge();
+
   if (c == 1 || c == 2) {               // loop / single — NON-BLOCKING, stateless analytic render
     int64_t now = esp_timer_get_time();
     if (renderPrevControl != c) {                          // (re)start on control change
-      cycleEpochUs = now; renderPrevControl = c;
+      cycleEpochUs = now; renderPrevControl = c; lastFrameU = -1.0f;
+      pendingMerge();                                       // start the cycle from the latest staged params
       if (syncRole == ROLE_LEADER) leaderMarkEvent();       // #9: burst a beacon so followers switch in sync
     }
     if (syncRole == ROLE_LEADER) leaderEpochUs = cycleEpochUs;   // beacon carries the render epoch (shared grid)
@@ -810,13 +908,16 @@ void loop() {
       if (c == 1) {                                                       // next rep: advance epoch by exactly
         cycleEpochUs += (int64_t)total * 1000;                            // one cycle (keep the grid; §4.5, #11)
         if (now - cycleEpochUs > (int64_t)total * 2000) cycleEpochUs = now;   // resync if we fell >1 cycle behind
-        if (syncRole == ROLE_LEADER) leaderMarkEvent();                   // #9: new epoch → tell followers now
-        renderFrameAt(0);
-      } else { control = 0; renderPrevControl = 0xFF; notifyControl(); }  // single done → idle
+        pendingMerge();                                                   // §7: apply staged kinematic edits at the boundary
+        if (syncRole == ROLE_LEADER) leaderMarkEvent();                   // #9: merged params + new epoch → tell followers now
+        renderFrameAt(0); lastFrameU = 0.0f;
+      } else { control = 0; renderPrevControl = 0xFF; notifyControl();    // single done → idle
+               if (syncRole == ROLE_LEADER) leaderMarkEvent(); }          // #11: burst the idle transition to followers
     } else if (u >= cd) {
-      FastLED.clear(); FastLED.show();                     // dark rest gap (loop only)
+      if (lastFrameU != -2.0f) { lastFrameU = -2.0f; FastLED.clear(); FastLED.show(); }   // dark rest gap — blank once
     } else {
-      renderFrameAt(gridQuantize(u));                      // shared frame grid (§3.4)
+      float qu = gridQuantize(u);                          // shared frame grid (§3.4); skip duplicate frames
+      if (qu != lastFrameU) { lastFrameU = qu; renderFrameAt(qu); }
     }
     delay(4);                           // ~250 Hz service; the grid-paced core-1 render task lands with sync (plan §3.5)
   } else if (c == 3) {                  // preview: live dot map for the active mode
