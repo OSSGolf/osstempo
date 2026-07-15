@@ -104,7 +104,6 @@ volatile uint16_t getReadyMs = 1000;             // get-ready countdown length; 
 volatile uint16_t holdMs     = 600;              // hold at the finish
 volatile uint16_t restMs     = 3000;             // dark rest gap between reps
 volatile uint8_t  railsLit   = 1;                // keep impact/backswing/extent dots lit during the stroke
-volatile int      aim2Now    = -1;               // full-swing: LED index of the purple dot while lit, else -1
 
 // Comet look
 const uint8_t TAIL = 6;                           // fading tail length in LEDs
@@ -114,10 +113,9 @@ const CRGB    TARGET_COLOR = CRGB(255, 90, 0);    // top-of-backswing aim point 
 const CRGB    RED_COLOR    = CRGB(200, 0, 0);     // max-width extent / strip ends (red, full mode)
 const CRGB    AIM2_COLOR   = CRGB(150, 70, 255);  // purple secondary aim (full-swing weight-shift dot)
 
-// Types used in function signatures, declared up here so the Arduino IDE's auto-generated
-// prototypes (inserted near the top of the sketch) can see them before first use.
-typedef float (*EaseFn)(float);                   // easing function pointer
-struct RefDot { int idx; CRGB col; };             // a static reference dot kept lit during a sweep
+// Type used in a function signature, declared up here so the Arduino IDE's auto-generated
+// prototypes (inserted near the top of the sketch) can see it before first use.
+struct RefDot { int idx; CRGB col; };             // a static reference dot (preview / get-ready dot map)
 
 // ---------- Persistence (NVS) ----------
 Preferences       prefs;
@@ -448,53 +446,10 @@ float dropEase(float ph, float release01) {
   return pendular + (lag - pendular) * release01;
 }
 
-// ---------- Rendering ----------
-// Adds the comet (bright head + fading tail) at fractional pos, CLIPPED to [loIdx, hiIdx]
-// so the impact / backswing / extent markers visually "bound" it. The tail trails opposite
-// travel, so it flips when the comet reverses.
-static void addComet(float pos, int loIdx, int hiIdx) {
-  static float prevPos = pos;
-  static int   dir = 1;                    // keep last real direction through holds/turnarounds
-  if      (pos > prevPos + 0.01f) dir = 1; // moving toward higher index
-  else if (pos < prevPos - 0.01f) dir = -1;// toward lower index
-  prevPos = pos;
-  int base = (int)floorf(pos);
-  for (int i = -1; i <= TAIL; i++) {      // i=-1 is the leading pixel, i>0 is the trailing tail
-    int idx = base - dir * i;
-    if (idx < loIdx || idx > hiIdx) continue;   // bound the comet to the active segment
-    if (idx < 0 || idx >= NUM_LEDS) continue;
-    float dist = fabs(idx - pos);
-    uint8_t b = (uint8_t)max(0.0f, 255.0f * (1.0f - dist / (TAIL + 1)));
-    leds[idx] += CRGB(scale8(DOT_COLOR.r, b), scale8(DOT_COLOR.g, b), scale8(DOT_COLOR.b, b));
-  }
-}
-
-// Putt renderer: bounded comet + rails. When railsLit, the green impact and amber backswing
-// dots stay lit as the bounding "walls"; otherwise the amber shows until reached (legacy look)
-// only on the backswing (legacyAmber).
-void drawComet(float pos, int centerIdx, int reachIdx, bool legacyAmber, int loIdx, int hiIdx) {
-  fadeToBlackBy(leds, NUM_LEDS, 90);          // soft trails
-  if (railsLit) {
-    if (centerIdx >= 0 && centerIdx < NUM_LEDS) leds[centerIdx] = BALL_COLOR;   // impact rail
-    if (reachIdx  >= 0 && reachIdx  < NUM_LEDS) leds[reachIdx]  = TARGET_COLOR; // backswing rail
-  } else if (legacyAmber && reachIdx >= 0 && reachIdx < NUM_LEDS && pos < reachIdx - 0.5f) {
-    leds[reachIdx] = TARGET_COLOR;            // keep the aim point lit until reached
-  }
-  addComet(pos, loIdx, hiIdx);
-  FastLED.show();
-}
-
-// Full renderer: bounded comet over the reference dots (the bounding rails, gated by railsLit).
-void drawCometRefs(float pos, const RefDot *refs, int n, int loIdx, int hiIdx) {
-  fadeToBlackBy(leds, NUM_LEDS, 90);
-  if (railsLit)
-    for (int k = 0; k < n; k++)
-      if (refs[k].idx >= 0 && refs[k].idx < NUM_LEDS) leds[refs[k].idx] = refs[k].col;
-  // Purple weight-shift dot stays lit once it appears, independent of railsLit.
-  if (aim2Now >= 0 && aim2Now < NUM_LEDS) leds[aim2Now] = AIM2_COLOR;
-  addComet(pos, loIdx, hiIdx);
-  FastLED.show();
-}
+// ---------- Static-marker rendering (preview / dot maps) ----------
+// (The blocking comet renderers — addComet/drawComet/drawCometRefs and the runStroke* stroke drivers —
+//  were retired by the analytic stateless renderer above; only these static-dot helpers remain, used
+//  by the preview branch of loop().)
 
 // Static ball + target markers (putt get-ready phase).
 void showMarkers(int centerIdx, int targetIdx, bool showTarget) {
@@ -510,171 +465,6 @@ void showRefs(const RefDot *refs, int n) {
   for (int k = 0; k < n; k++)
     if (refs[k].idx >= 0 && refs[k].idx < NUM_LEDS) leds[refs[k].idx] = refs[k].col;
   FastLED.show();
-}
-
-// Get-ready countdown: pulse the green impact LED smoothly `pulses` times (1s each, a
-// "3-2-1-go"), with the reference dots lit so the golfer can aim. Replaces the old 2-stage hold.
-void countdownPulses(int centerIdx, const RefDot *refs, int n, int pulses) {
-  for (int k = 0; k < pulses && control != 0; k++) {
-    uint32_t t0 = millis();
-    while (millis() - t0 < 1000 && control != 0) {
-      float ph  = (millis() - t0) / 1000.0f;     // 0..1
-      float lvl = sinf(ph * PI);                  // smooth 0 -> 1 -> 0
-      FastLED.clear();
-      for (int j = 0; j < n; j++)
-        if (refs[j].idx >= 0 && refs[j].idx < NUM_LEDS) leds[refs[j].idx] = refs[j].col;
-      if (centerIdx >= 0 && centerIdx < NUM_LEDS)
-        leds[centerIdx] = CRGB(0, (uint8_t)(220.0f * lvl), 0);   // pulsing green impact
-      FastLED.show();
-      delay(8);
-    }
-  }
-}
-
-// Animate the comet from a -> b over `ms` with easing, bounded to [loIdx, hiIdx].
-void sweep(float a, float b, uint16_t ms, EaseFn ease, const RefDot *refs, int n, int loIdx, int hiIdx) {
-  if (ms == 0) return;
-  uint32_t t0 = millis();
-  while (millis() - t0 < ms && control != 0) {
-    float ph = (millis() - t0) / (float)ms;
-    drawCometRefs(a + (b - a) * ease(ph), refs, n, loIdx, hiIdx);
-    delay(4);
-  }
-}
-
-// Like sweep(), but shapes the drop-to-impact by the release amount (0..1) instead of a fixed ease.
-void sweepDrop(float a, float b, uint16_t ms, float release01, const RefDot *refs, int n, int loIdx, int hiIdx) {
-  if (ms == 0) return;
-  uint32_t t0 = millis();
-  while (millis() - t0 < ms && control != 0) {
-    float ph = (millis() - t0) / (float)ms;
-    drawCometRefs(a + (b - a) * dropEase(ph, release01), refs, n, loIdx, hiIdx);
-    delay(4);
-  }
-}
-
-// Hold the comet at a fixed position for ms (bounded, ref dots lit).
-void holdAt(float pos, uint16_t ms, const RefDot *refs, int n, int loIdx, int hiIdx) {
-  uint32_t t0 = millis();
-  while (millis() - t0 < ms && control != 0) { drawCometRefs(pos, refs, n, loIdx, hiIdx); delay(20); }
-}
-
-// ---------- PUTT stroke ----------
-void runStroke() {
-  Profile p = profiles[mode];                  // snapshot so mid-rep BLE writes don't tear
-  float amp = p.reachLeds;
-  int centerIdx = (int)roundf(CENTER);
-  int targetIdx = (int)roundf(CENTER + amp);
-  int followIdx = (int)roundf(CENTER - amp);
-
-  // Get-ready countdown: N smooth green-impact pulses with the aim dots lit.
-  RefDot grefs[] = { { centerIdx, BALL_COLOR }, { targetIdx, TARGET_COLOR } };
-  countdownPulses(centerIdx, grefs, 2, (int)roundf(getReadyMs / 1000.0f));
-
-  // Backswing: center -> target, bounded to [impact, amber] (emerges from the ball, parks at amber).
-  uint32_t t0 = millis();
-  while (millis() - t0 < p.backswingMs && control != 0) {
-    float ph = (millis() - t0) / (float)p.backswingMs;
-    float off = amp * sinf(ph * PI / 2.0f);              // fast at center, slow at top
-    drawComet(CENTER + off, centerIdx, targetIdx, true, centerIdx, targetIdx);
-    delay(4);
-  }
-
-  // Drop to impact: top -> center, flowing THROUGH impact (bounded to the envelope).
-  float rel = p.release / 100.0f;
-  t0 = millis();
-  while (millis() - t0 < p.downswingMs && control != 0) {
-    float ph = (millis() - t0) / (float)p.downswingMs;
-    float off = amp * (1.0f - dropEase(ph, rel));        // +amp -> 0 (impact, fastest)
-    drawComet(CENTER + off, centerIdx, targetIdx, false, followIdx, targetIdx);
-    delay(4);
-  }
-
-  // Follow-through: center -> -amp, bounded to the envelope.
-  t0 = millis();
-  while (millis() - t0 < p.followMs && control != 0) {
-    float ph = (millis() - t0) / (float)p.followMs;
-    float off = -amp * easeOut(ph);                      // 0 -> -amp (decel)
-    drawComet(CENTER + off, centerIdx, targetIdx, false, followIdx, targetIdx);
-    delay(4);
-  }
-
-  // Hold at the finish (follow-end, or impact/center if followMs == 0), then clear.
-  float finishOff = (p.followMs > 0) ? -amp : 0.0f;
-  t0 = millis();
-  while (millis() - t0 < holdMs && control != 0) {
-    drawComet(CENTER + finishOff, centerIdx, targetIdx, false, followIdx, targetIdx);
-    delay(20);
-  }
-  fadeToBlackBy(leds, NUM_LEDS, 60); FastLED.show();
-}
-
-// ---------- FULL swing (arc projected onto the strip) ----------
-void runStrokeFull() {
-  Profile p = profiles[mode];                  // snapshot
-  float amp  = p.reachLeds;                     // amber (top of backswing) offset from center
-
-  float center    = CENTER;
-  float backRed   = NUM_LEDS - 1;               // near end (strip end) = max width
-  float backAmber = CENTER + amp;
-  float folRed    = 0;                          // far end (strip end)
-
-  int centerIdx    = (int)roundf(center);
-  int backRedIdx   = (int)roundf(backRed);      // NUM_LEDS-1
-  int folRedIdx    = (int)roundf(folRed);       // 0
-  int backAmberIdx = (int)roundf(backAmber);
-
-  const RefDot refs[] = {
-    { centerIdx,    BALL_COLOR   },   // [0] ball / impact
-    { backRedIdx,   RED_COLOR    },   // red: backswing max width
-    { folRedIdx,    RED_COLOR    },   // red: follow-through end
-    { backAmberIdx, TARGET_COLOR },   // amber drawn last so it stays visible at max reach
-  };
-  const int NREF = 4;
-
-  // Purple weight-shift dot (full-swing aid): appears at a chosen moment and stays lit
-  // until the next rep. Off during get-ready.
-  bool aim2On  = p.aim2Enabled != 0;
-  int  aim2Idx = constrain((int)p.aim2Led, 1, NUM_LEDS - 2);
-  aim2Now = -1;
-
-  // Get-ready countdown: N smooth green-impact pulses with the full dot map lit for aiming.
-  countdownPulses(centerIdx, refs, NREF, (int)roundf(getReadyMs / 1000.0f));
-  if (aim2On && p.aim2When == 0) aim2Now = aim2Idx;   // 0 = from address (lit before the takeaway)
-
-  // Split backswing/downswing time across their sub-segments by distance (float math
-  // avoids uint16 overflow). dOut = center<->red; dIn = red<->amber.
-  float dOut = backRed - center;                // center -> backRed
-  float dIn  = backRed - backAmber;             // backRed -> backAmber
-  uint16_t bOut = (uint16_t)(p.backswingMs * (dOut / (dOut + dIn)));
-  uint16_t bIn  = p.backswingMs - bOut;
-  uint16_t dBack = (uint16_t)(p.downswingMs * (dIn / (dIn + dOut)));   // backAmber -> backRed
-  uint16_t dDown = p.downswingMs - dBack;                              // backRed -> center
-
-  // Backswing: out to red, bounded [impact, red]; then up to amber, bounded [amber, red].
-  sweep(center,    backRed,   bOut, easeInOut, refs, NREF, centerIdx,    backRedIdx);
-  sweep(backRed,   backAmber, bIn,  easeInOut, refs, NREF, backAmberIdx, backRedIdx);
-  if (aim2On && p.aim2When == 1) aim2Now = aim2Idx;   // 1 = top of backswing (before the pause)
-  holdAt(backAmber, p.topHoldMs, refs, NREF, backAmberIdx, backRedIdx);     // pause at the top
-
-  // Downswing: amber -> red, bounded [amber, red]; then red -> center flowing THROUGH impact.
-  if (aim2On && p.aim2When == 2) aim2Now = aim2Idx;   // 2 = start of downswing
-  sweep(backAmber, backRed,   dBack, easeInOut, refs, NREF, backAmberIdx, backRedIdx);
-  sweepDrop(backRed, center,  dDown, p.release / 100.0f, refs, NREF, folRedIdx, backRedIdx);
-
-  // Follow-through: center -> far end (red), bounded to the strip.
-  if (aim2On && p.aim2When == 3) aim2Now = aim2Idx;   // 3 = impact
-  sweep(center,    folRed,    p.followMs, easeOut, refs, NREF, folRedIdx, backRedIdx);
-  holdAt(p.followMs > 0 ? folRed : center, holdMs, refs, NREF, folRedIdx, backRedIdx);
-
-  aim2Now = -1;   // reset for the next rep
-  fadeToBlackBy(leds, NUM_LEDS, 60); FastLED.show();
-}
-
-// Run one stroke in the active mode.
-void runActiveStroke() {
-  if (mode == MODE_FULL) runStrokeFull();
-  else                   runStroke();
 }
 
 // ---------- Persistence helpers ----------
