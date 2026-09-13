@@ -322,6 +322,10 @@ boards -- the Dig2go and the generic ESP32:
    must not end up stuck reversed.
 9. Connect the iOS app to a stick flashed with the *old* firmware: it must still connect, with
    only the reverse toggle disabled.
+10. Change a tuning value and form/join a set within ~1 s, then disband: the edit must survive.
+    Session formation now defers to the render core so it can commit first, so this also confirms
+    the deferral still forms the set when the app drops BLE immediately after the write.
+11. Tap Blink-to-find twice in quick succession: both taps must blink.
 
 ## Current state
 
