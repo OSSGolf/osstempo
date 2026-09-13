@@ -342,9 +342,9 @@ void syncDrainDeferred() {
 // shared clock. Called from loop() (core 1). Stateless renderer ⇒ agree on u ⇒ identical frame (§3.4).
 static float followerLastFrameU = -1.0f;                      // frame-skip: last quantized u rendered (-2 = blanked)
 
-// Clear BOTH render paths' frame-skip state. Defined here because the follower's copy is private to
-// this tab; `lastFrameU` lives in the main tab. See the declaration there.
-void invalidateFrameSkip() { lastFrameU = -1.0f; followerLastFrameU = -1.0f; }
+// Force the follower render path to repaint on its next tick. The main tab's invalidateFrameSkip()
+// calls this alongside its own sentinel, so neither tab reaches into the other's private state.
+void syncInvalidateFollowerFrameSkip() { followerLastFrameU = -1.0f; }
 void followerRenderStep() {
   followerHelloTick();
   followerPingTick();
@@ -430,8 +430,14 @@ void syncBecomeLeader(uint16_t sid, const uint8_t key[16], uint8_t channel) {
 void syncJoinSession(uint16_t sid, const uint8_t key[16], uint8_t channel) {
   sessionId = sid; memcpy(sessionKey, key, 16); chOp = channel;
   syncRole = ROLE_FOLLOWER;
+  // Go BLE-quiet HERE rather than relying on ServerCB::onDisconnect seeing the new role. Session
+  // formation is deferred to core 1, so the app's disconnect (sent straight after the …0013 write)
+  // can arrive BEFORE this runs — and onDisconnect would then re-advertise a stick that is about to
+  // become a follower, leaving it discoverable and burning coex airtime for the life of the set.
+  // syncRevertToStandalone() re-advertises on the way out (§2.1).
+  BLEDevice::stopAdvertising();
   offsetCount = 0; offsetIdx = 0; clockOffsetUs = 0; owdUs = 0; haveRtt = false;
-  followerOffsetInit = false; followerLastFrameU = -1.0f;   // #8: re-lock the slewed clock from scratch
+  followerOffsetInit = false; syncInvalidateFollowerFrameSkip();   // #8: re-lock the slewed clock from scratch
   followerLastSeq = 0;                                  // #4: don't carry a prior session's seq (reboot/rejoin)
   followerEverHeard = false; followerJoinUs = esp_timer_get_time();
   followerKinInit = false; followerLastU = 1e9f;        // re-merge kinematic params on the first synced frame

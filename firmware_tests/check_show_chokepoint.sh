@@ -148,18 +148,31 @@ fi
 # host test can check — a host test re-implements the renderer, it does not read the .ino. Stated
 # positively, per function, rather than as an allowlist of legitimate lines: the question is which
 # function a read sits in, not what the line looks like.
-renderers="renderFrameAt drawCometAnalytic renderDotMap showMarkers showRefs positionAt strokeDirAt aim2LitAt"
+# `loop` is in the list because it composes the idle frame itself (fadeToBlackBy + the centre dot),
+# exactly as followerRenderStep does. Its one legitimate read of the flag lives behind
+# flipConfirmTag() for precisely this reason.
+renderers="loop renderFrameAt drawCometAnalytic renderDotMap showMarkers showRefs positionAt strokeDirAt aim2LitAt followerRenderStep"
 flip_leak=''
 for f in $files; do
-  for fn in $renderers followerRenderStep; do
-    d=$(grep -n "^[A-Za-z].*[ *]$fn(" "$f" | head -1 | cut -d: -f1 || true)
+  # Anchor on the comment-stripped view and require an actual definition, so prose mentioning a
+  # function name (e.g. "debounced-saved in loop()") cannot anchor the range at the wrong line.
+  stripped=$(mktemp)
+  sed -e 's|//.*||' -e 's|/\*[^*]*\*/||g' -e '\|/\*|,\|\*/|s|.*||' "$f" > "$stripped"
+  for fn in $renderers; do
+    d=$(grep -n "^[A-Za-z].*[ *]$fn([^;]*) *{ *$" "$stripped" | head -1 | cut -d: -f1 || true)
     [ -z "$d" ] && continue
-    e=$(awk -v s="$d" 'NR >= s && NR > s && /^}/ { print NR; exit }' "$f")
+    e=$(awk -v s="$d" 'NR > s && /^}/ { print NR; exit }' "$stripped")
     [ -z "$e" ] && continue
-    hit=$(sed -n "${d},${e}p" "$f" | sed 's|//.*||' | grep -n 'flipped' || true)
-    [ -n "$hit" ] && flip_leak="$flip_leak$(basename "$f") $fn(): $hit
+    hit=$(sed -n "${d},${e}p" "$stripped" | grep -n 'flipped' || true)
+    [ -z "$hit" ] && continue
+    # Report the real file line, not the offset within the range.
+    for h in $hit; do
+      rel=${h%%:*}
+      flip_leak="$flip_leak$(basename "$f"):$((d + rel - 1)) in $fn(): $(printf '%s' "$h" | cut -d: -f2-)
 "
+    done
   done
+  rm -f "$stripped"
 done
 if [ -n "$flip_leak" ]; then
   say_fail "the renderer reads 'flipped' — the flip must be an OUTPUT transform, not baked into composition:"

@@ -147,7 +147,8 @@ const CRGB    AIM2_COLOR   = CRGB(150, 70, 255);  // purple secondary aim (full-
 
 // Invalidate the render frame-skip so the next tick repaints. Anything that paints the strip
 // outside the render path (the identify blink) must call this, or the skip logic still believes
-// its last frame is on the strip and leaves whatever overwrote it in place.
+// its last frame is on the strip and leaves whatever overwrote it in place. Defined next to
+// `lastFrameU`, below.
 void invalidateFrameSkip();
 
 // Type used in a function signature, declared up here so the Arduino IDE's auto-generated
@@ -203,18 +204,17 @@ static void saveFlipNow() {
 // does the stick run now?". While a stroke is actually rendering, the moving comet already answers,
 // so the window is only consulted in the two blind states.
 static const uint32_t FLIP_CONFIRM_MS = 1200;
-volatile uint32_t flipConfirmUntilMs = 0;                // 0 = no window armed
-// The wrap-safe compare only holds while now and the deadline are within 2^31 ms of each other, so
-// an expired deadline must be RETIRED. Left armed, it reads as active again from ~24.9 days of
-// uptime and parks the dot map on the strip for the next ~24.9 days — reachable on a stick that has
-// no power button and is meant to sit plugged in and looping.
+// Stored as the moment the window was ARMED, not as a deadline, and tested by elapsed time. Unsigned
+// subtraction wraps correctly, so this is valid at any uptime with nothing to retire — which also
+// means the reader never writes, so a flip landing on core 0 can never be clobbered by core 1
+// deciding the previous window had expired. Seeded already-expired so a fresh boot shows nothing.
+volatile uint32_t flipConfirmArmedMs = (uint32_t)0 - FLIP_CONFIRM_MS;
 static inline bool flipConfirmActive() {
-  uint32_t until = flipConfirmUntilMs;
-  if (until == 0) return false;
-  if ((int32_t)(millis() - until) < 0) return true;
-  flipConfirmUntilMs = 0;                                // expired: disarm (a racing re-arm simply
-  return false;                                          //  re-fires on the next write)
+  return (uint32_t)(millis() - flipConfirmArmedMs) < FLIP_CONFIRM_MS;
 }
+// The confirm frame-skip tag, extracted so loop() itself never reads `flipped` — that keeps the
+// "no composition site reads the flag" invariant checkable per function by the structural guard.
+static inline float flipConfirmTag() { return flipped ? -3.0f : -4.0f; }
 
 // ---------- BLE UUIDs ----------
 //  tail  param            type     range / units                       scope
@@ -312,11 +312,15 @@ void identifyBlink() {
 //     `Preferences` is a stateful object whose begin() returns false (unchecked at every call site)
 //     if it is already open, so a concurrent begin/end from the BLE task would close the handle
 //     mid-save and silently drop whatever core 1 was writing — including both profile blobs.
-// Cost: a session command can stall one stroke frame while the commit runs. Forming a set is a
-// deliberate, one-off user action, and the alternative is losing the user's most recent edit.
+// Cost: forming a set now stalls the render loop for the NVS commit plus the radio bring-up inside
+// syncBecomeLeader/syncJoinSession (WiFi.mode + esp_now_init, order of 100 ms), so a stick that is
+// looping will visibly freeze and jump phase once. That is a deliberate, one-off user action; the
+// alternatives are losing the user's most recent edit and corrupting a concurrent NVS write. It
+// also makes bring-up and tear-down symmetric — syncWifiDown() was already on core 1.
 struct PendingSession { bool pending = false; uint8_t op = 0; uint16_t sid = 0; uint8_t channel = 6; uint8_t key[16] = {0}; };
 static PendingSession pendingSession;
 static portMUX_TYPE sessionMux = portMUX_INITIALIZER_UNLOCKED;
+static void pendingMerge();            // defined with the kinematic staging block below
 
 // Drain it on core 1. Flush first, then change role — the order is the whole point.
 static void servicePendingSession() {
@@ -325,6 +329,11 @@ static void servicePendingSession() {
   if (!pendingSession.pending) { portEXIT_CRITICAL(&sessionMux); return; }
   req = pendingSession; pendingSession.pending = false;
   portEXIT_CRITICAL(&sessionMux);
+  // Merge staged kinematics FIRST. While the stick is running, a kinematic edit is staged into
+  // pendingKin rather than written to profiles[] (§7), and loop()'s own save is gated to idle so it
+  // can never observe that. This one is not, so saving without merging would persist the PRE-EDIT
+  // profile and clear paramsDirty — losing exactly the edit this flush exists to rescue.
+  pendingMerge();                      // no-op unless something is staged; it checks under its own lock
   // Gate on the OLD role: a stick that is already a follower holds the leader's params in RAM and
   // must never commit them to its own flash. Orientation is exempt — it is the one setting a
   // follower still owns (see saveFlipNow).
@@ -513,8 +522,7 @@ class CharCB : public BLECharacteristicCallbacks {
     else if (uuid == CH_FLIP)     { uint8_t f = min((int)(uint8_t)v[0], 1);
                                     flipped = f; chSetU8(c, f);            // echo the clamped value back
                                     flipDirty = true;
-                                    uint32_t until = millis() + FLIP_CONFIRM_MS;
-                                    flipConfirmUntilMs = until ? until : 1;   // 0 means "not armed"
+                                    flipConfirmArmedMs = millis();
                                     return; }
     else return;                    // unknown characteristic: nothing to persist
 
@@ -843,6 +851,8 @@ static int64_t cycleEpochUs = 0;
 // painted at so a second flip inside the window still repaints. File scope (not a function static)
 // so anything that paints the strip out of band can invalidate it.
 static float lastFrameU = -1.0f;
+
+void invalidateFrameSkip() { lastFrameU = -1.0f; syncInvalidateFollowerFrameSkip(); }
 static uint8_t  renderPrevControl = 0xFF;
 
 void loop() {
@@ -894,7 +904,7 @@ void loop() {
       // — a 144-LED latch takes ~4.3 ms, so repainting at loop rate would latch back to back. The
       // sentinel carries the orientation so a second flip inside the window still forces a repaint.
       if (flipConfirmActive()) {
-        const float tag = flipped ? -3.0f : -4.0f;
+        const float tag = flipConfirmTag();
         if (lastFrameU != tag) { lastFrameU = tag; renderDotMap(); }                      // orientation answer
       } else if (lastFrameU != -2.0f) { lastFrameU = -2.0f; clearLeds(); showFrame(); }   // blank once
       // Commit a pending orientation AFTER the paint, so the NVS stall lands on an already-dark

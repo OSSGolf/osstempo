@@ -53,6 +53,7 @@ void  syncServiceTimeouts();
 void  syncDrainDeferred();                    // perform RX-callback-deferred actions (revert/identify) on core 1
 void  syncIdentifyFollower(const uint8_t mac[6]);
 void  syncDeferIdentifySelf();                // queue THIS stick's blink for core 1 (never blink on the BLE task)
+void  syncInvalidateFollowerFrameSkip();      // force the follower render path to repaint next tick
 void  leaderBeaconTick();
 void  leaderMarkEvent();                      // #9: leader sends an immediate repeated event beacon
 void  followerRenderStep();                   // one follower render tick off the shared clock
