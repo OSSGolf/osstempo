@@ -49,7 +49,7 @@
 // as a compile flag). The pinned copies under docs/ ship with the right line uncommented.
 #if !defined(BOARD_DIG2GO) && !defined(BOARD_DIY_ESP32)
   #define BOARD_DIG2GO           // QuinLED-Dig2go pre-assembled (the board this repo runs on now)
-  //#define BOARD_DIY_ESP32      // generic ESP32 dev board + 470ohm + 1000uF
+  //#define BOARD_DIY_ESP32      // generic ESP32 dev board + 470ohm + ceramic bulk (see pcb_build_spec.md)
 #endif
 
 // ---------- LED config (per board) ----------
@@ -65,7 +65,38 @@
 #define LED_TYPE    WS2812B
 #define COLOR_ORDER GRB
 
-CRGB leds[NUM_LEDS];
+// ---------- Frame buffers: LOGICAL composition, PHYSICAL output (the 180 flip) ----------
+// The renderer composes every frame in LOGICAL index space into leds[] (0 = the low end of the
+// stroke picture). showFrame() is the ONLY thing that hands a frame to the strip, and it is where
+// the 180 flip happens: with `flipped` set it copies leds[] out reversed, i -> NUM_LEDS-1-i.
+//
+// Reflection about index (NUM_LEDS-1)/2 IS reflection about CENTER (71.5), so the whole picture --
+// comet head and tail, green ball, amber top-of-backswing, both red extents, the purple aim dot,
+// the get-ready pulse, the idle dot -- mirrors together and stays mutually consistent. Because the
+// mirror is applied to the FINISHED buffer, no LED element can escape it, including elements added
+// later: that totality is the whole point of doing it here instead of inverting the stroke math
+// (which is golden-parity-pinned in firmware_tests/ and re-implemented in the iOS app).
+//
+// Two buffers rather than reversing leds[] in place around show(): FastLED's show() returns while
+// the strip is still being clocked out, and its internal yield can deschedule this task for
+// milliseconds. An in-place mirror would leave the shared buffer transiently reversed across that
+// window, where any other writer would strand it. 432 bytes buys that whole hazard class away, and
+// leds[] is then never transiently wrong -- so fadeToBlackBy()'s idle IIR, which reads the buffer
+// back across frames, keeps working in logical space with no changes.
+CRGB leds[NUM_LEDS];                      // LOGICAL frame -- everything in the sketch writes here
+CRGB physLeds[NUM_LEDS];                  // PHYSICAL frame handed to FastLED (bound in setup)
+
+// 0 = normal, 1 = strip mirrored end-for-end. Global, persisted, and deliberately DEVICE-LOCAL:
+// orientation describes how THIS stick is lying on the ground, not how a stroke is shaped, so it is
+// never carried in the sync beacon and a leader can never rotate a follower's strip (see §1.4 /
+// sync_firmware.ino). Written from the BLE task (core 0), read by the renderer (core 1): a single
+// byte, atomic on Xtensa, feeding no multi-word state -- so `volatile` + a local snapshot is the
+// same discipline brightness/railsLit/control already use, and needs no mutex.
+volatile uint8_t flipped = 0;
+
+// (clearLeds() / showFrame() are defined just below the RefDot declaration: the Arduino IDE injects
+// its auto-generated prototypes ahead of the FIRST function definition in the sketch, so defining a
+// function above `Profile`/`RefDot` would push those prototypes above the types they reference.)
 
 // Center / impact index (between 71 and 72 for a 144-LED strip)
 const float   CENTER = (NUM_LEDS - 1) / 2.0f;
@@ -117,10 +148,56 @@ const CRGB    AIM2_COLOR   = CRGB(150, 70, 255);  // purple secondary aim (full-
 // prototypes (inserted near the top of the sketch) can see it before first use.
 struct RefDot { int idx; CRGB col; };             // a static reference dot (preview / get-ready dot map)
 
+// Clear the LOGICAL frame. Replaces FastLED.clear(), which clears the array bound to the
+// controller -- that is physLeds[] now, which the renderer must never touch.
+static inline void clearLeds() { fill_solid(leds, NUM_LEDS, CRGB::Black); }
+
+// Latch the composed frame to the strip. THE single output choke point: FastLED.show() must appear
+// exactly once in this firmware, right here, or a render path would bypass the flip and paint
+// unmirrored on a flipped stick. firmware_tests/check_show_chokepoint.sh enforces that mechanically.
+// (An explicit element copy rather than memcpy: FastLED overloads memcpy, making a CRGB[] copy
+// ambiguous. 144 three-byte assignments are free next to the frame's own composition cost.)
+static inline void showFrame() {
+  const uint8_t f = flipped;              // snapshot once: core 0 can change it mid-call
+  const int last = NUM_LEDS - 1;
+  if (f) { for (int i = 0; i < NUM_LEDS; i++) physLeds[last - i] = leds[i]; }
+  else   { for (int i = 0; i < NUM_LEDS; i++) physLeds[i]        = leds[i]; }
+  FastLED.show();
+}
+
 // ---------- Persistence (NVS) ----------
 Preferences       prefs;
 volatile bool     paramsDirty = false;           // set on BLE write; debounced-saved in loop()
 volatile uint32_t lastWriteMs = 0;
+
+// Orientation gets its OWN dirty flag and its own one-key commit, separate from the debounced
+// saveParams(). That save is gated to control == 0 so a flash cache-stall can never land mid-stroke
+// -- but this stick has no power button: the normal end of a session is unplugging it, often while
+// still looping. Orientation is the one setting a user changes and then walks away from, so riding
+// the idle gate would lose it in the dominant flow. Instead it commits at the DARK REST GAP as well
+// as in idle (loop()): the strip is already blanked there once per rep, so a stall is invisible, and
+// the worst-case loss window collapses from unbounded to a single rep.
+volatile bool     flipDirty = false;
+static void saveFlipNow() {
+  prefs.begin("tempo", false);
+  prefs.putUChar("flip", flipped);               // putX skips a no-op write, so this is cheap
+  prefs.end();
+  flipDirty = false;
+}
+
+// Orientation feedback window. In idle the strip shows a single dim LED at the centre, and in the
+// dark rest gap it shows nothing at all -- so a flip in those states moves one pixel by 6.9 mm, or
+// nothing, and the user taps again thinking the toggle is broken. For a short window after a flip
+// write, those two states paint the mode's static dot map instead: the amber top-of-backswing dot
+// jumping to the other side of the green ball is an immediate, unambiguous answer to "which way
+// does the stick run now?". While a stroke is actually rendering, the moving comet already answers,
+// so the window is only consulted in the two blind states.
+static const uint32_t FLIP_CONFIRM_MS = 1200;
+volatile uint32_t flipConfirmUntilMs = 0;
+static inline bool flipConfirmActive() {
+  uint32_t until = flipConfirmUntilMs;
+  return until != 0 && (int32_t)(millis() - until) < 0;   // wrap-safe compare
+}
 
 // ---------- BLE UUIDs ----------
 //  tail  param            type     range / units                       scope
@@ -140,6 +217,7 @@ volatile uint32_t lastWriteMs = 0;
 //  000F  aim2 enabled     uint8    0/1 (purple weight-shift dot)        per-mode (full)
 //  0010  aim2 position    uint8    1..NUM_LEDS-2 (absolute LED index)   per-mode (full)
 //  0011  aim2 when        uint8    0 address /1 top /2 down /3 impact   per-mode (full)
+//  0014  flip             uint8    0 normal / 1 mirrored end-for-end    global, device-local
 #define SVC_UUID        "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 #define CH_BACKSWING    "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 #define CH_DOWNSWING    "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
@@ -159,6 +237,7 @@ volatile uint32_t lastWriteMs = 0;
 #define CH_AIM2WHEN     "6e400011-b5a3-f393-e0a9-e50e24dcca9e"
 #define CH_FOLLOWERSTAT "6e400012-b5a3-f393-e0a9-e50e24dcca9e"   // follower-status: read + NOTIFY (§12)
 #define CH_SESSIONCMD   "6e400013-b5a3-f393-e0a9-e50e24dcca9e"   // session-command: write, opcode-tagged (§6)
+#define CH_FLIP         "6e400014-b5a3-f393-e0a9-e50e24dcca9e"   // 180 flip: strip orientation (global)
 
 // Per-mode characteristic handles, so a mode switch can refresh their stored
 // values to the newly-active profile (lets a BLE client read correct values).
@@ -198,8 +277,8 @@ void notifyControl() {
 // Blink the strip briefly so a user can bind a roster row to this physical stick (Blink-to-find, §6).
 void identifyBlink() {
   for (int k = 0; k < 3; k++) {
-    fill_solid(leds, NUM_LEDS, CRGB(255, 255, 255)); FastLED.show(); delay(120);
-    FastLED.clear(true); delay(120);
+    fill_solid(leds, NUM_LEDS, CRGB(255, 255, 255)); showFrame(); delay(120);
+    clearLeds(); showFrame(); delay(120);
   }
 }
 
@@ -213,6 +292,13 @@ void handleSessionCmd(const String &v) {
     for (int i = 0; i < 16; i++) key[i] = (uint8_t)v[1 + i];
     uint8_t ch = (v.length() >= 18) ? (uint8_t)v[17] : 6;
     uint16_t sid = (uint16_t)key[0] | ((uint16_t)key[1] << 8);   // both sides derive sessionId from the key
+    // Commit any debounced edit BEFORE the role changes. The debounced save in loop() is gated to
+    // `syncRole != ROLE_FOLLOWER`, and joining flips the role immediately -- so an edit made within
+    // the 1500 ms debounce would never reach NVS, be overwritten in RAM by the leader's params, and
+    // be silently rolled back to its pre-edit value by the loadParams() on revert. Session
+    // formation is a rare, deliberate user action, so the NVS commit is affordable here.
+    if (paramsDirty) { paramsDirty = false; saveParams(); }
+    if (flipDirty)   { saveFlipNow(); }
     if (op == 1) syncBecomeLeader(sid, key, ch);
     else         syncJoinSession(sid, key, ch);
   } else if (op == 3) {
@@ -224,7 +310,12 @@ void handleSessionCmd(const String &v) {
       for (int i = 0; i < 6; i++) mac[i] = (uint8_t)v[1 + i];
       syncIdentifyFollower(mac);
     } else {
-      identifyBlink();
+      // Defer to loop() on core 1 rather than blinking here: identifyBlink() blocks for 720 ms and
+      // writes leds[] + latches the strip, and this runs on the BLE task (core 0). The remote path
+      // has always deferred for exactly that reason (sync_firmware.ino, `identifyPending`); this
+      // local path calling it inline was an oversight, and it is a concurrent writer to the buffer
+      // showFrame() owns.
+      syncDeferIdentifySelf();
     }
   }
 }
@@ -361,6 +452,19 @@ class CharCB : public BLECharacteristicCallbacks {
     else if (uuid == CH_RAILS)    { railsLit = min((int)(uint8_t)v[0], 1); chSetU8(c, railsLit); cosmetic = true; }
     else if (uuid == CH_AIM2EN)   { uint8_t e = min((int)(uint8_t)v[0], 1); profiles[mode].aim2Enabled = e; chSetU8(c, e); cosmetic = true; }
     else if (uuid == CH_AIM2POS)  { uint8_t pos = avoidAim2Overlap((int)(uint8_t)v[0], profiles[mode].reachLeds); profiles[mode].aim2Led = pos; chSetU8(c, pos); cosmetic = true; }
+    // --- orientation (immediate, device-local; NOT beacon-carried, NOT staged) ---
+    // Cosmetic in the §7 sense -- it feeds neither positionAt nor cycleDuration, so it applies live
+    // rather than at the next cycle boundary. Flipping mid-stroke is safe precisely because the
+    // renderer holds no temporal state: frame N draws logical, frame N+1 draws mirrored, both at the
+    // same u, so the comet lands at its mirror position with identical phase -- a reflection in
+    // space, never a jump in time. Deliberately does NOT set `cosmetic`: that flag bursts a beacon
+    // carrying the cosmetic GLOBALS, and orientation is per-stick and never shared. It also takes
+    // its own save path rather than paramsDirty (see saveFlipNow).
+    else if (uuid == CH_FLIP)     { uint8_t f = min((int)(uint8_t)v[0], 1);
+                                    flipped = f; chSetU8(c, f);            // echo the clamped value back
+                                    flipDirty = true;
+                                    flipConfirmUntilMs = millis() + FLIP_CONFIRM_MS;
+                                    return; }
     else return;                    // unknown characteristic: nothing to persist
 
     paramsDirty = true;             // mark for debounced save in loop() (staged edits flush before the save fires)
@@ -384,9 +488,12 @@ void setupBLE() {
   BLEDevice::init("PuttTempo");
   BLEServer *server = BLEDevice::createServer();
   server->setCallbacks(new ServerCB());
-  // 16 characteristics need ~34 GATT handles (2 each + 1 for control's CCCD + 1 service);
-  // the default (15) silently truncates the table after ~7 chars, so allocate generously.
-  BLEService *svc = server->createService(BLEUUID(SVC_UUID), 48);   // 18 chars (+…0012/…0013) need more handles
+  // GATT handle budget -- the default (15) SILENTLY truncates the table after ~7 characteristics,
+  // and the Arduino BLE wrapper does not check the error, so the symptom is a client discovering a
+  // short table and rejecting the device as incompatible. Count it exactly whenever a char is added:
+  //   1 (service) + 19 chars x 2 + 2 CCCDs (…0006 control, …0012 follower-status) = 41.
+  // 48 reserved leaves room for 3 more characteristics before this must be raised.
+  BLEService *svc = server->createService(BLEUUID(SVC_UUID), 48);   // 19 chars (…0002-…0014) = 41 handles
 
   auto mk = [&](const char *uuid, uint16_t init, bool twoByte, bool notify = false) {
     uint32_t props = BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE;
@@ -417,6 +524,7 @@ void setupBLE() {
   chAim2When = mk(CH_AIM2WHEN, profiles[mode].aim2When,    false);
   chFollowerStat = mk(CH_FOLLOWERSTAT, 0, false, true);   // …0012 READ + NOTIFY (follower-status)
   mk(CH_SESSIONCMD, 0, false);                            // …0013 WRITE (opcode-tagged session command)
+  mk(CH_FLIP,       flipped, false);                      // …0014 strip orientation (global, device-local)
 
   svc->start();
   BLEAdvertising *adv = BLEDevice::getAdvertising();
@@ -453,18 +561,18 @@ float dropEase(float ph, float release01) {
 
 // Static ball + target markers (putt get-ready phase).
 void showMarkers(int centerIdx, int targetIdx, bool showTarget) {
-  FastLED.clear();
+  clearLeds();
   if (centerIdx >= 0 && centerIdx < NUM_LEDS) leds[centerIdx] = BALL_COLOR;
   if (showTarget && targetIdx >= 0 && targetIdx < NUM_LEDS) leds[targetIdx] = TARGET_COLOR;
-  FastLED.show();
+  showFrame();
 }
 
 // Static reference dots (full get-ready phase / preview).
 void showRefs(const RefDot *refs, int n) {
-  FastLED.clear();
+  clearLeds();
   for (int k = 0; k < n; k++)
     if (refs[k].idx >= 0 && refs[k].idx < NUM_LEDS) leds[refs[k].idx] = refs[k].col;
-  FastLED.show();
+  showFrame();
 }
 
 // ---------- Persistence helpers ----------
@@ -476,6 +584,7 @@ void loadParams() {
   holdMs     = prefs.getUShort("hold",  holdMs);
   restMs     = prefs.getUShort("rest",  restMs);
   railsLit   = prefs.getUChar ("rails", railsLit);
+  flipped    = prefs.getUChar ("flip",  flipped);
   prefs.getBytes("prof0", &profiles[0], sizeof(Profile));   // unchanged if key absent
   prefs.getBytes("prof1", &profiles[1], sizeof(Profile));
   prefs.end();
@@ -490,6 +599,7 @@ void loadParams() {
   holdMs     = constrain(holdMs, 0, 10000);
   restMs     = constrain(restMs, 0, 20000);
   railsLit   = constrain((int)railsLit, 0, 1);
+  flipped    = constrain((int)flipped, 0, 1);
   for (int m = 0; m < 2; m++) {
     profiles[m].backswingMs = constrain(profiles[m].backswingMs, 100, 5000);
     profiles[m].downswingMs = constrain(profiles[m].downswingMs, 100, 5000);
@@ -511,6 +621,7 @@ void saveParams() {
   prefs.putUShort("hold",  holdMs);
   prefs.putUShort("rest",  restMs);
   prefs.putUChar ("rails", railsLit);
+  prefs.putUChar ("flip",  flipped);
   prefs.putBytes("prof0", &profiles[0], sizeof(Profile));
   prefs.putBytes("prof1", &profiles[1], sizeof(Profile));
   prefs.end();
@@ -523,9 +634,9 @@ void setup() {
   digitalWrite(LED_POWER_PIN, LED_POWER_ON);
 #endif
   loadParams();                         // restore saved settings (or first-boot defaults)
-  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(physLeds, NUM_LEDS);   // PHYSICAL buffer, not leds[]
   FastLED.setBrightness(brightness);
-  FastLED.clear(true);
+  clearLeds(); showFrame();
   setupBLE();
   Serial.println("Tempo Trainer ready - pair over BLE");
 }
@@ -630,7 +741,7 @@ void renderFrameAt(float u) {
   const Profile &p = profiles[mode];
   float amp = p.reachLeds;
   int centerIdx = (int)roundf(CENTER);
-  FastLED.clear();
+  clearLeds();
   if (railsLit) {
     if (centerIdx >= 0 && centerIdx < NUM_LEDS) leds[centerIdx] = BALL_COLOR;
     int amberIdx = (int)roundf(CENTER + amp);
@@ -648,11 +759,30 @@ void renderFrameAt(float u) {
     float local = u - floorf(u / 1000.0f) * 1000.0f;      // ms into the current 1 s pulse
     float lvl   = sinf((local / 1000.0f) * PI);           // smooth 0 -> 1 -> 0
     if (centerIdx >= 0 && centerIdx < NUM_LEDS) leds[centerIdx] = CRGB(0, (uint8_t)(220.0f * lvl), 0);
-    FastLED.show();
+    showFrame();
     return;
   }
   drawCometAnalytic(positionAt(u, p), strokeDirAt(u, p), 0, NUM_LEDS - 1);
-  FastLED.show();
+  showFrame();
+}
+
+// The active mode's static dot map (green ball, amber top-of-backswing, red extents, purple aim
+// dot). Extracted from the preview branch of loop() so the orientation-confirmation window can
+// reuse it: it is exactly the picture that answers "which way does the stick run now?".
+void renderDotMap() {
+  float amp = profiles[mode].reachLeds;
+  if (mode == MODE_FULL) {
+    const RefDot refs[] = {
+      { (int)roundf(CENTER),       BALL_COLOR   },
+      { (int)roundf(CENTER + amp), TARGET_COLOR },
+      { NUM_LEDS - 1,              RED_COLOR    },
+      { 0,                         RED_COLOR    },
+      { constrain((int)profiles[mode].aim2Led, 1, NUM_LEDS - 2), AIM2_COLOR },
+    };
+    showRefs(refs, profiles[mode].aim2Enabled ? 5 : 4);
+  } else {
+    showMarkers((int)roundf(CENTER), (int)roundf(CENTER + amp), true);
+  }
 }
 
 // Cycle epoch for the non-blocking render loop (esp_timer µs at the current cycle's u=0).
@@ -677,7 +807,8 @@ void loop() {
     return;
   }
 
-  static float lastFrameU = -1.0f;      // frame-skip: last quantized u rendered (-2 = rest-gap blanked)
+  static float lastFrameU = -1.0f;      // frame-skip: last quantized u rendered
+                                        // (-2 = rest gap blanked, -3 = orientation-confirm dot map)
   uint8_t c = control;
   // Not running (idle/preview): flush any staged kinematic edits to the live globals so preview/next-run
   // and the debounced NVS save see the latest values (§7).
@@ -704,7 +835,12 @@ void loop() {
       } else { control = 0; renderPrevControl = 0xFF; notifyControl();    // single done → idle
                if (syncRole == ROLE_LEADER) leaderMarkEvent(); }          // #11: burst the idle transition to followers
     } else if (u >= cd) {
-      if (lastFrameU != -2.0f) { lastFrameU = -2.0f; FastLED.clear(); FastLED.show(); }   // dark rest gap — blank once
+      // Dark rest gap. Commit a pending orientation here: the strip is already blanked, so the NVS
+      // stall is invisible, and this is the only safe point that recurs while the stick keeps
+      // looping (see saveFlipNow). With restMs == 0 there is no gap and the commit waits for idle.
+      if (flipDirty && syncRole != ROLE_FOLLOWER) saveFlipNow();
+      if (flipConfirmActive()) { renderDotMap(); lastFrameU = -3.0f; }                    // orientation answer
+      else if (lastFrameU != -2.0f) { lastFrameU = -2.0f; clearLeds(); showFrame(); }     // blank once
     } else {
       float qu = gridQuantize(u);                          // shared frame grid (§3.4); skip duplicate frames
       if (qu != lastFrameU) { lastFrameU = qu; renderFrameAt(qu); }
@@ -712,26 +848,19 @@ void loop() {
     delay(4);                           // ~250 Hz service; the grid-paced core-1 render task lands with sync (plan §3.5)
   } else if (c == 3) {                  // preview: live dot map for the active mode
     renderPrevControl = 0xFF;
-    float amp = profiles[mode].reachLeds;
-    if (mode == MODE_FULL) {
-      // Include the purple dot when enabled so it can be positioned live in preview.
-      const RefDot refs[] = {
-        { (int)roundf(CENTER),       BALL_COLOR   },
-        { (int)roundf(CENTER + amp), TARGET_COLOR },
-        { NUM_LEDS - 1,              RED_COLOR    },
-        { 0,                         RED_COLOR    },
-        { constrain((int)profiles[mode].aim2Led, 1, NUM_LEDS - 2), AIM2_COLOR },
-      };
-      showRefs(refs, profiles[mode].aim2Enabled ? 5 : 4);
-    } else {
-      showMarkers((int)roundf(CENTER), (int)roundf(CENTER + amp), true);
-    }
+    if (flipDirty && syncRole != ROLE_FOLLOWER) saveFlipNow();
+    renderDotMap();                     // includes the purple dot when enabled, so it can be placed live
     delay(30);
   } else {                              // idle: dim center marker so you can line up
     renderPrevControl = 0xFF;
-    fadeToBlackBy(leds, NUM_LEDS, 40);
-    leds[(int)roundf(CENTER)] = CRGB(0, 40, 0);
-    FastLED.show();
+    if (flipDirty && syncRole != ROLE_FOLLOWER) saveFlipNow();
+    if (flipConfirmActive()) {          // just flipped: show the dot map, not a single dim pixel
+      renderDotMap();
+    } else {
+      fadeToBlackBy(leds, NUM_LEDS, 40);
+      leds[(int)roundf(CENTER)] = CRGB(0, 40, 0);
+      showFrame();
+    }
     delay(20);
   }
 }

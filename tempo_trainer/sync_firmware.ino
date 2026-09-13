@@ -122,6 +122,11 @@ static void syncWifiUp() {
 }
 
 // Leader → a specific follower: broadcast an addressed identify; only the matching MAC blinks (§13-ask-2).
+// Queue this stick's own identify blink for loop() on core 1. Called from the BLE task, which must
+// never run the 720 ms blocking blink itself -- it writes leds[] and latches the strip concurrently
+// with the renderer.
+void syncDeferIdentifySelf() { identifyPending = true; }
+
 void syncIdentifyFollower(const uint8_t mac[6]) {
   if (syncRole != ROLE_LEADER || !wifiUp) return;
   uint8_t pkt[8] = { 'I', 'D', mac[0], mac[1], mac[2], mac[3], mac[4], mac[5] };
@@ -326,7 +331,11 @@ void syncDrainDeferred() {
   if (statusDirty)     { statusDirty = false;     notifyFollowerStatus(); }   // #1: deferred …0012 BLE notify
   if (disbandPending)  { disbandPending = false;  syncDoDisband(); }          // #4/#6: deferred disband storm + teardown
   if (pendingRevert)   { pendingRevert = false;   syncRevertToStandalone(); }
-  if (identifyPending) { identifyPending = false; identifyBlink(); }
+  // Clear AFTER the blink, not before: this flag now has two producers (the addressed ESP-NOW
+  // identify and the local …0013 op-4 path), and a read-then-clear would silently drop a request
+  // that arrived between the test and the clear. Coalescing repeats into one blink is the right
+  // semantics for "blink me".
+  if (identifyPending) { identifyBlink(); identifyPending = false; }
 }
 
 // One follower render tick: send hello/ping, snapshot the shared state (seqlock), render off the
@@ -354,12 +363,12 @@ void followerRenderStep() {
     if (u < cycleDuration(profiles[mode])) {
       float qu = gridQuantize(u);                             // shared frame grid (§3.4); skip duplicate frames
       if (qu != followerLastFrameU) { followerLastFrameU = qu; renderFrameAt(qu); }
-    } else if (followerLastFrameU != -2.0f) { followerLastFrameU = -2.0f; FastLED.clear(); FastLED.show(); }   // rest/idle gap
+    } else if (followerLastFrameU != -2.0f) { followerLastFrameU = -2.0f; clearLeds(); showFrame(); }   // rest/idle gap
   } else {
     followerLastFrameU = -1.0f;
     fadeToBlackBy(leds, NUM_LEDS, 40);
     leds[(int)roundf(CENTER)] = CRGB(0, 40, 0);
-    FastLED.show();
+    showFrame();
   }
 }
 
@@ -452,7 +461,15 @@ void syncRevertToStandalone() {
   syncRole = ROLE_STANDALONE;
   portENTER_CRITICAL(&followersMux); followerN = 0; portEXIT_CRITICAL(&followersMux);   // #7
   if (wasFollower) {                                    // a follower's RAM params were the LEADER's — restore ours
+    // Orientation is DEVICE-LOCAL: a sync session never owns it, so it must survive this restore.
+    // loadParams() would reload `flipped` from NVS, which can predate a toggle whose commit had not
+    // yet reached a safe save point -- silently rotating the strip on revert. (Narrow residual race:
+    // the T_JOIN fast revert can fire while an app is still connected, so a flip write landing on
+    // core 0 during these blocking NVS reads would be overwritten. Unreachable in practice, since a
+    // follower is BLE-quiet, and self-corrects on the next write.)
+    const uint8_t keepFlip = flipped;
     loadParams();                                       // (matters cross-build: a dig2go follower of a generic
+    flipped = keepFlip;
     FastLED.setBrightness(brightness);                  //  leader must return to ITS own saved config on disband)
     followerKinInit = false;
     BLEDevice::startAdvertising();                       // was BLE-quiet while synced (§2.1) → advertise so it's re-addable
