@@ -170,6 +170,36 @@ changes tempo (impact still lands on time). Defaults: putt 0, full 55.
   debounced (~1.5 s) so live preview-slider dragging doesn't wear the flash.
 - `control` is **not** persisted — the device always boots into loop mode.
 
+#### Reversing the stick (180 flip)
+
+`0014` runs the stroke the other way down the strip, for a left-hander or a stick lying the
+other way round. It mirrors the **finished frame** on its way out, `i -> NUM_LEDS-1-i`, at the
+firmware's single output choke point (`showFrame()`), so every element flips together -- comet
+head and tail, green ball, amber top-of-backswing, both red extents, the purple aim dot, the
+get-ready pulse, the idle dot -- and nothing in the stroke math changes. Reflection about index
+`(NUM_LEDS-1)/2` *is* reflection about `CENTER`, so the picture stays self-consistent; the green
+ball sits half an LED above centre normally and half an LED below it reversed, which is the exact
+mirror image rather than an off-by-one.
+
+Flipping mid-stroke is safe and needs no special handling: the renderer holds no temporal state,
+so frame N draws logical and frame N+1 draws mirrored, both at the same cycle time. The comet
+lands at its mirror position with identical phase -- a reflection in space, never a jump in time.
+Worst case it is visible one render tick later (<=12 ms while running, <=20 ms idle), plus the
+BLE round trip; a phone write with response is typically another 60-130 ms.
+
+Two states would otherwise give no feedback at all -- idle lights a single dim centre pixel, and
+the rest gap lights nothing -- so for 1.2 s after a flip both paint the mode's static dot map
+instead. The amber dot jumping to the other side of the ball is the answer to "which way does it
+run now?".
+
+**It is device-local.** Orientation describes how *that* stick is lying, so it is deliberately
+not carried in the sync beacon: two sticks in a set can point opposite ways, and a leader can
+never rotate a follower's strip. Consequence: a follower goes BLE-quiet while in a set, so set
+orientation **before** joining. It persists in NVS, including across a follower's revert.
+
+It is also the one characteristic the iOS app treats as **optional**, so a stick flashed before
+`0014` existed still connects and works -- only the reverse toggle is disabled.
+
 ## BLE GATT
 
 - **Service:** `6e400001-b5a3-f393-e0a9-e50e24dcca9e`
@@ -193,6 +223,7 @@ changes tempo (impact still lands on time). Defaults: putt 0, full 55.
 | 000f | aim2 enabled | uint8 | 0/1 (purple weight-shift dot, full only) | per-mode | 0 / 0 |
 | 0010 | aim2 position | uint8 | 1-142 (absolute LED index) | per-mode | 70 / 70 |
 | 0011 | aim2 when | uint8 | 0 address / 1 top / 2 downswing / 3 impact | per-mode | 1 / 1 |
+| 0014 | flip | uint8 | 0 normal / 1 mirrored end-for-end | global, device-local | 0 |
 
 uint16 values are little-endian (e.g. 700 = `BC 02`). Per-mode writes apply to
 whichever mode is currently selected (`000a`); switching `000a` refreshes the
@@ -227,10 +258,23 @@ write characteristics), or a Web Bluetooth page (TODO below).
 ## Gotchas / lessons learned
 
 - **GATT handle budget.** ESP32 Arduino `createService(uuid)` defaults to **15 handles**
-  and *silently truncates* the characteristic table after ~7 chars (each char = 2 handles,
-  +1 for the control CCCD, +1 for the service). With 16 characteristics you **must** pass an
-  explicit count: `createService(BLEUUID(SVC_UUID), 40)`. Symptom of getting this wrong: a
-  client discovers only the first 6-7 characteristics and rejects the device as incompatible.
+  and *silently truncates* the characteristic table after ~7 chars, and the Arduino BLE wrapper
+  does not check the error. Symptom: a client discovers only the first 6-7 characteristics and
+  rejects the device as incompatible -- indistinguishable from the stale-GATT-cache symptom
+  below, so you pay the debugging cost twice. Count it exactly every time you add one:
+  1 (service) + chars x 2 + 1 per CCCD. Today that is `1 + 19x2 + 2 = 41`, against the 48
+  reserved by `createService(BLEUUID(SVC_UUID), 48)` -- room for 3 more before it must rise.
+- **`FastLED.show()` must appear exactly once**, inside `showFrame()`. That is what makes the
+  180 flip total: the mirror is applied to the finished buffer, so no LED element can escape it
+  -- but only while every render path latches through that one function. `FastLED.clear(true)`
+  is banned for the same reason (it calls `showColor()`, a second output path that bypasses the
+  frame buffer entirely), as is `FastLED.clear()` (it clears the array bound to the controller,
+  which is the *physical* buffer, not the logical frame -- use `clearLeds()`).
+  `firmware_tests/check_show_chokepoint.sh` enforces all of this; a compile cannot.
+- **`FastLED.show()` returns before the strip is latched.** It is asynchronous, and its internal
+  yield can deschedule the calling task for milliseconds. The renderer composes into `leds[]` and
+  `showFrame()` copies that into a separate `physLeds[]` for FastLED, so the shared frame is never
+  transiently inconsistent -- which is why the flip does not mirror `leds[]` in place.
 - **iOS caches the GATT table.** After adding/removing a characteristic and re-flashing,
   iOS serves the *stale* cached service list — toggle the iPhone's Bluetooth off/on (or forget
   the device) to force fresh discovery, or you'll see the old characteristic set.
@@ -240,6 +284,44 @@ write characteristics), or a Web Bluetooth page (TODO below).
 - **Comet tail direction** is inferred from `prevPos` and lags ~1-2 frames at zero-velocity
   turnarounds; harmless given the bounding clip. (Was previously a visible cosmetic issue.)
 - **Full-mode follow-through has no inboard finish marker** by design.
+
+## Tests
+
+Host-compiled, no hardware needed:
+
+```
+cc -O2 -o /tmp/golden firmware_tests/golden_kinematics.c -lm && /tmp/golden
+cc -O2 -o /tmp/flip   firmware_tests/flip_mirror.c      -lm && /tmp/flip
+sh firmware_tests/check_show_chokepoint.sh
+node web/check_flip_mapping.js
+```
+
+Compile gate, **both** boards (they must both build; the flip touches no board-conditional code):
+
+```
+arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnings all tempo_trainer
+arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnings all \
+  --build-property "compiler.cpp.extra_flags=-DBOARD_DIY_ESP32" tempo_trainer
+```
+
+### Bench checklist for the flip (not yet run)
+
+None of the above touches the flashed binary, so these still need a stick. Run on **both**
+boards -- the Dig2go and the generic ESP32:
+
+1. Flip mid-backswing while looping: the comet reflects with no phase jump and no tearing.
+2. Flip during the dark rest gap, and while idle: the dot map appears for ~1.2 s and the amber
+   dot is on the opposite side of the green ball.
+3. Flip during the get-ready countdown.
+4. Flip while `control == 2` (single) and let the stroke auto-return to idle.
+5. **Flip, then pull the power while still looping, then reboot** -- orientation must survive.
+   This is the case the rest-gap commit exists for; the stick has no power button.
+6. Flip, join a set as a follower, disband, and confirm orientation survived the revert.
+7. Blink-to-find while looping, before and after: the strip must never be left reversed.
+8. Hammer `0014` at ~50 Hz from nRF Connect for a minute while looping, then stop: the strip
+   must not end up stuck reversed.
+9. Connect the iOS app to a stick flashed with the *old* firmware: it must still connect, with
+   only the reverse toggle disabled.
 
 ## Current state
 

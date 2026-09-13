@@ -23,12 +23,15 @@ arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnin
 
 ## BLE reference
 - Device name `PuttTempo`; service `6e400001-b5a3-f393-e0a9-e50e24dcca9e`.
-- **16 characteristics, tails `0002`–`0011`** (see README GATT table). Scan by **service UUID** (most reliable on iOS); the name is in the scan response. `control` (`0006`) supports NOTIFY.
+- **17 tunable characteristics, tails `0002`–`0011` plus `0014`** (see README GATT table); `0012`/`0013` are the multi-stick status/command channels, not tunables. Scan by **service UUID** (most reliable on iOS); the name is in the scan response. `control` (`0006`) supports NOTIFY.
 - Per-mode params apply to the active mode; writing `mode` (`000a`) refreshes the per-mode characteristic values.
 - `000e railsLit` (global) keeps the impact/aim dots lit; `get-ready ms` is a countdown of `round(ms/1000)` smooth impact pulses; the comet is bounded by the impact/aim markers per segment.
+- `0014 flip` (global, device-local, persisted) mirrors the finished frame end-for-end; it is the only characteristic the iOS app treats as **optional**, so older firmware still connects.
 - `000f`-`0011` are the **full-swing purple aiming dot** (per-mode): enabled, absolute LED position (skips other dots), and appear-moment (0 address / 1 top / 2 downswing / 3 impact); stays lit until the next rep, independent of `railsLit`.
 
 ## Gotchas (cost real debugging time)
-- **`createService()` GATT handles:** default 15 silently truncates the table after ~7 chars. Must use `createService(BLEUUID(SVC_UUID), 40)` for 16 chars. Symptom: client sees only the first 6-7 chars → "incompatible device".
+- **`createService()` GATT handles:** default 15 silently truncates the table after ~7 chars, and the Arduino BLE wrapper doesn't check the error. Count exactly: 1 + chars×2 + 1 per CCCD — today `1 + 19×2 + 2 = 41` against the 48 reserved. Symptom of getting it wrong: client sees only the first 6-7 chars → "incompatible device".
+- **`FastLED.show()` appears exactly once**, inside `showFrame()` — that's what makes the 180 flip (`0014`) total, since the mirror is applied to the finished frame. `FastLED.clear()`/`clear(true)` are banned (they touch the *physical* buffer / call `showColor()`); use `clearLeds()` + `showFrame()`. `firmware_tests/check_show_chokepoint.sh` enforces it.
+- **`0014` flip is DEVICE-LOCAL**: not in the `SyncBeacon`, so a leader never rotates a follower's strip — and a follower is BLE-quiet, so set orientation before joining a set.
 - **iOS GATT cache:** after re-flashing with a changed characteristic set, toggle the iPhone's Bluetooth (or forget the device) to drop the stale cached table.
 - **`plutil -extract <key> <fmt> <file>` without `-o -` overwrites the file in place** with the extracted value — always append `-o -` to print to stdout.

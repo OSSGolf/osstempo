@@ -808,7 +808,8 @@ void loop() {
   }
 
   static float lastFrameU = -1.0f;      // frame-skip: last quantized u rendered
-                                        // (-2 = rest gap blanked, -3 = orientation-confirm dot map)
+                                        // (-2 = rest gap blanked; -3/-4 = orientation-confirm dot
+                                        //  map, tagged with the orientation it was painted at)
   uint8_t c = control;
   // Not running (idle/preview): flush any staged kinematic edits to the live globals so preview/next-run
   // and the debounced NVS save see the latest values (§7).
@@ -839,8 +840,13 @@ void loop() {
       // stall is invisible, and this is the only safe point that recurs while the stick keeps
       // looping (see saveFlipNow). With restMs == 0 there is no gap and the commit waits for idle.
       if (flipDirty && syncRole != ROLE_FOLLOWER) saveFlipNow();
-      if (flipConfirmActive()) { renderDotMap(); lastFrameU = -3.0f; }                    // orientation answer
-      else if (lastFrameU != -2.0f) { lastFrameU = -2.0f; clearLeds(); showFrame(); }     // blank once
+      // The dot map is static, so paint it ONCE on entry rather than every 4 ms tick — a 144-LED
+      // latch takes ~4.3 ms, so repainting at loop rate would latch back to back. The sentinel
+      // carries the orientation so a second flip inside the window still forces a repaint.
+      if (flipConfirmActive()) {
+        const float tag = flipped ? -3.0f : -4.0f;
+        if (lastFrameU != tag) { lastFrameU = tag; renderDotMap(); }                      // orientation answer
+      } else if (lastFrameU != -2.0f) { lastFrameU = -2.0f; clearLeds(); showFrame(); }   // blank once
     } else {
       float qu = gridQuantize(u);                          // shared frame grid (§3.4); skip duplicate frames
       if (qu != lastFrameU) { lastFrameU = qu; renderFrameAt(qu); }

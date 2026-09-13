@@ -138,6 +138,10 @@
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
     padding: 18px; margin-bottom: 14px; animation: rise .6s .18s both;
   }
+  .tgl { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .tgl input { width: 17px; height: 17px; margin: 1px 0 0; accent-color: var(--amber); flex: none; }
+  .tgl .name { font-size: 13.5px; font-weight: 600; }
+  .tgl .hint { display: block; color: var(--faint); font-weight: 500; font-size: 11.5px; margin: 3px 0 0; }
   .ctl { margin-bottom: 18px; }
   .ctl:last-child { margin-bottom: 0; }
   .ctl-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 9px; }
@@ -283,6 +287,12 @@
         <input type="range" id="bri" min="2" max="255" value="40" />
       </div>
       <div class="ctl">
+        <label class="tgl">
+          <input type="checkbox" id="flip" />
+          <span class="name">Reverse direction<span class="hint">mirrors the strip end-for-end &mdash; for left-handers or a stick lying the other way round</span></span>
+        </label>
+      </div>
+      <div class="ctl">
         <div class="ctl-head"><span class="name">Get-ready</span><span class="val"><span id="readyVal">1000</span><span class="u"> ms</span></span></div>
         <input type="range" id="ready" min="0" max="4000" step="50" value="1000" />
       </div>
@@ -310,11 +320,17 @@
 
 /* ====================== Firmware GATT ====================== */
 const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-const U = (t) => `6e40000${t}-b5a3-f393-e0a9-e50e24dcca9e`;
+// Tails are four hex digits: `6e40000${t}` could only ever express a single digit, so anything
+// from 0x10 up (the aim-dot chars, and flip at 0014) needs the full width.
+const U = (t) => `6e40${String(t).padStart(4, "0")}-b5a3-f393-e0a9-e50e24dcca9e`;
 const CH = {
-  back:  U(2), down: U(3), reach: U(4), bri: U(5), control: U(6),
-  ready: U(7), hold: U(8), rest: U(9), mode: U("a"), top: U("b"), release: U("c"), follow: U("d"),
+  back:  U("0002"), down: U("0003"), reach: U("0004"), bri: U("0005"), control: U("0006"),
+  ready: U("0007"), hold: U("0008"), rest: U("0009"), mode: U("000a"), top: U("000b"),
+  release: U("000c"), follow: U("000d"), flip: U("0014"),
 };
+// Characteristics a stick may legitimately not have, so older firmware still connects. Mirrors
+// Param.optionalParams in the iOS app.
+const OPTIONAL_CH = new Set([CH.flip]);
 
 const NUM = 144, CENTER = (NUM - 1) / 2, HALF = (NUM - 1) >> 1;
 const CM_PER_LED = 100 / NUM;          // 144 LEDs / 1 m
@@ -325,7 +341,8 @@ const profiles = {
   0: { back: 700, down: 350, reach: 58, top: 0,   release: 0,  follow: 350 },   // putt: pendular
   1: { back: 900, down: 300, reach: 60, top: 150, release: 55, follow: 300 },   // full: moderate lag
 };
-const globals = { bri: 40, ready: 1000, hold: 600, rest: 3000 };
+const globals = { bri: 40, ready: 1000, hold: 600, rest: 3000, flip: 0 };
+let flipSupported = true;      // cleared when a connected stick has no …0014
 let mode = 0;          // 0 putt, 1 full
 let runState = 1;      // 0 idle, 1 loop, 2 single, 3 preview  (animate locally by default)
 const P = () => profiles[mode];
@@ -389,9 +406,13 @@ function fitCanvas() {
   cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-const ledX = i => padX + (i / (NUM - 1)) * (cssW - 2 * padX);
+// The drawn strip is a picture of the stick, so it mirrors when the stick is reversed. These two
+// are an exact inverse pair and must stay that way: the canvas drag reads a position back through
+// xToLed, so mirroring only ledX would send every drag to its mirror index.
+const flipIdx = i => (globals.flip ? (NUM - 1 - i) : i);
+const ledX = i => padX + (flipIdx(i) / (NUM - 1)) * (cssW - 2 * padX);
 const stripY = () => cssH * 0.5;
-const xToLed = x => Math.round(((x - padX) / (cssW - 2 * padX)) * (NUM - 1));
+const xToLed = x => flipIdx(Math.round(((x - padX) / (cssW - 2 * padX)) * (NUM - 1)));
 const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 function glowDot(x, y, radius, color, intensity) {
@@ -501,6 +522,7 @@ function refreshReadouts() {
   $("readyVal").textContent = globals.ready;
   $("holdVal").textContent = globals.hold;
   $("restVal").textContent = globals.rest;
+  $("flip").checked = globals.flip !== 0;
   $("ratioVal").textContent = (p.back / p.down).toFixed(1);
   // sliders
   $("back").value = p.back; $("down").value = p.down; $("top").value = p.top; $("rel").value = p.release;
@@ -531,6 +553,14 @@ bindParam("bri", "g", "bri", CH.bri, false);
 bindParam("ready", "g", "ready", CH.ready, true);
 bindParam("hold", "g", "hold", CH.hold, true);
 bindParam("rest", "g", "rest", CH.rest, true);
+
+// Orientation is a checkbox, not a slider: state + an immediate write, and the local canvas
+// mirrors straight away so the page answers the tap even before the stick does.
+$("flip").addEventListener("change", () => {
+  globals.flip = $("flip").checked ? 1 : 0;
+  refreshReadouts();
+  queueWrite(CH.flip, globals.flip, false);
+});
 
 // dragging reach: nudge device into preview so the amber moves live
 $("reach").addEventListener("pointerdown", () => { if (connected && runState !== 1) setRun(3); });
@@ -638,7 +668,14 @@ async function connect() {
     $("connLabel").textContent = "Connecting…";
     server = await device.gatt.connect();
     const svc = await server.getPrimaryService(SVC);
-    for (const [k, uuid] of Object.entries(CH)) chars[uuid] = await svc.getCharacteristic(uuid);
+    for (const [k, uuid] of Object.entries(CH)) {
+      try { chars[uuid] = await svc.getCharacteristic(uuid); }
+      catch (e) {
+        // An optional characteristic missing means older firmware, not an incompatible device.
+        if (!OPTIONAL_CH.has(uuid)) throw e;
+        if (uuid === CH.flip) { flipSupported = false; $("flip").disabled = true; $("flip").title = "This stick's firmware predates the reverse setting"; }
+      }
+    }
     connected = true;
     btn.classList.remove("busy"); btn.classList.add("connected"); $("connLabel").textContent = device.name || "Connected";
 
@@ -654,6 +691,7 @@ async function connect() {
     globals.ready = await readU(CH.ready, true);
     globals.hold = await readU(CH.hold, true);
     globals.rest = await readU(CH.rest, true);
+    globals.flip = flipSupported ? await readU(CH.flip, false) : 0;
     setMode(mode);
     refreshReadouts();
     setRun(1);
@@ -665,7 +703,8 @@ async function connect() {
 }
 
 function onDisconnect() {
-  connected = false; chars = {};
+  connected = false; chars = {}; flipSupported = true;
+  $("flip").disabled = false; $("flip").title = "";
   $("connBtn").classList.remove("connected"); $("connLabel").textContent = "Connect";
   toast("Disconnected", true);
 }
