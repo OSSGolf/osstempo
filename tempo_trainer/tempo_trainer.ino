@@ -46,7 +46,8 @@
 
 // ---------- Board select ----------
 // One sketch, two builds. Pick ONE board below (or pass -DBOARD_DIG2GO / -DBOARD_DIY_ESP32
-// as a compile flag). The pinned copies under docs/ ship with the right line uncommented.
+// as a compile flag). NOTE: the single-file copies under docs/ are DEPRECATED SNAPSHOTS -- they
+// predate the sync module and the flip, and are not kept in step with this sketch.
 #if !defined(BOARD_DIG2GO) && !defined(BOARD_DIY_ESP32)
   #define BOARD_DIG2GO           // QuinLED-Dig2go pre-assembled (the board this repo runs on now)
   //#define BOARD_DIY_ESP32      // generic ESP32 dev board + 470ohm + ceramic bulk (see pcb_build_spec.md)
@@ -144,6 +145,11 @@ const CRGB    TARGET_COLOR = CRGB(255, 90, 0);    // top-of-backswing aim point 
 const CRGB    RED_COLOR    = CRGB(200, 0, 0);     // max-width extent / strip ends (red, full mode)
 const CRGB    AIM2_COLOR   = CRGB(150, 70, 255);  // purple secondary aim (full-swing weight-shift dot)
 
+// Invalidate the render frame-skip so the next tick repaints. Anything that paints the strip
+// outside the render path (the identify blink) must call this, or the skip logic still believes
+// its last frame is on the strip and leaves whatever overwrote it in place.
+void invalidateFrameSkip();
+
 // Type used in a function signature, declared up here so the Arduino IDE's auto-generated
 // prototypes (inserted near the top of the sketch) can see it before first use.
 struct RefDot { int idx; CRGB col; };             // a static reference dot (preview / get-ready dot map)
@@ -177,6 +183,10 @@ volatile uint32_t lastWriteMs = 0;
 // the idle gate would lose it in the dominant flow. Instead it commits at the DARK REST GAP as well
 // as in idle (loop()): the strip is already blanked there once per rep, so a stall is invisible, and
 // the worst-case loss window collapses from unbounded to a single rep.
+//
+// Unlike saveParams() this is NOT gated on `syncRole != ROLE_FOLLOWER`. That rule exists because a
+// follower's profiles[] hold the LEADER's params and must never reach its own flash; orientation is
+// the one setting a follower still owns, so committing it is always correct.
 volatile bool     flipDirty = false;
 static void saveFlipNow() {
   prefs.begin("tempo", false);
@@ -193,10 +203,17 @@ static void saveFlipNow() {
 // does the stick run now?". While a stroke is actually rendering, the moving comet already answers,
 // so the window is only consulted in the two blind states.
 static const uint32_t FLIP_CONFIRM_MS = 1200;
-volatile uint32_t flipConfirmUntilMs = 0;
+volatile uint32_t flipConfirmUntilMs = 0;                // 0 = no window armed
+// The wrap-safe compare only holds while now and the deadline are within 2^31 ms of each other, so
+// an expired deadline must be RETIRED. Left armed, it reads as active again from ~24.9 days of
+// uptime and parks the dot map on the strip for the next ~24.9 days — reachable on a stick that has
+// no power button and is meant to sit plugged in and looping.
 static inline bool flipConfirmActive() {
   uint32_t until = flipConfirmUntilMs;
-  return until != 0 && (int32_t)(millis() - until) < 0;   // wrap-safe compare
+  if (until == 0) return false;
+  if ((int32_t)(millis() - until) < 0) return true;
+  flipConfirmUntilMs = 0;                                // expired: disarm (a racing re-arm simply
+  return false;                                          //  re-fires on the next write)
 }
 
 // ---------- BLE UUIDs ----------
@@ -217,6 +234,8 @@ static inline bool flipConfirmActive() {
 //  000F  aim2 enabled     uint8    0/1 (purple weight-shift dot)        per-mode (full)
 //  0010  aim2 position    uint8    1..NUM_LEDS-2 (absolute LED index)   per-mode (full)
 //  0011  aim2 when        uint8    0 address /1 top /2 down /3 impact   per-mode (full)
+//  0012  follower status  bytes    read + NOTIFY (multi-stick set health)  runtime
+//  0013  session command  bytes    write, opcode-tagged (form/join/disband) runtime
 //  0014  flip             uint8    0 normal / 1 mirrored end-for-end    global, device-local
 #define SVC_UUID        "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 #define CH_BACKSWING    "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
@@ -276,10 +295,43 @@ void notifyControl() {
 
 // Blink the strip briefly so a user can bind a roster row to this physical stick (Blink-to-find, §6).
 void identifyBlink() {
+  invalidateFrameSkip();          // the blink overwrites the strip; force the next tick to repaint
   for (int k = 0; k < 3; k++) {
     fill_solid(leds, NUM_LEDS, CRGB(255, 255, 255)); showFrame(); delay(120);
     clearLeds(); showFrame(); delay(120);
   }
+}
+
+// Session formation (…0013 ops 1/2) is deferred out of the BLE callback to loop() on core 1, as
+// disband and identify already are. Two reasons beyond consistency:
+//   * It must first COMMIT any debounced edit. Joining flips syncRole immediately and the debounced
+//     save is gated to `syncRole != ROLE_FOLLOWER`, so an edit made inside the 1500 ms debounce
+//     would never reach NVS, would be overwritten in RAM by the leader's params, and would then be
+//     silently rolled back to its pre-edit value by the loadParams() on revert.
+//   * That commit is an NVS write, and every other Preferences call in this sketch runs on core 1.
+//     `Preferences` is a stateful object whose begin() returns false (unchecked at every call site)
+//     if it is already open, so a concurrent begin/end from the BLE task would close the handle
+//     mid-save and silently drop whatever core 1 was writing — including both profile blobs.
+// Cost: a session command can stall one stroke frame while the commit runs. Forming a set is a
+// deliberate, one-off user action, and the alternative is losing the user's most recent edit.
+struct PendingSession { bool pending = false; uint8_t op = 0; uint16_t sid = 0; uint8_t channel = 6; uint8_t key[16] = {0}; };
+static PendingSession pendingSession;
+static portMUX_TYPE sessionMux = portMUX_INITIALIZER_UNLOCKED;
+
+// Drain it on core 1. Flush first, then change role — the order is the whole point.
+static void servicePendingSession() {
+  PendingSession req;
+  portENTER_CRITICAL(&sessionMux);
+  if (!pendingSession.pending) { portEXIT_CRITICAL(&sessionMux); return; }
+  req = pendingSession; pendingSession.pending = false;
+  portEXIT_CRITICAL(&sessionMux);
+  // Gate on the OLD role: a stick that is already a follower holds the leader's params in RAM and
+  // must never commit them to its own flash. Orientation is exempt — it is the one setting a
+  // follower still owns (see saveFlipNow).
+  if (paramsDirty && syncRole != ROLE_FOLLOWER) { paramsDirty = false; saveParams(); }
+  if (flipDirty) saveFlipNow();
+  if (req.op == 1) syncBecomeLeader(req.sid, req.key, req.channel);
+  else             syncJoinSession(req.sid, req.key, req.channel);
 }
 
 // Parse an opcode-tagged …0013 session command (matches the iOS CoreBluetoothTransport contract).
@@ -292,15 +344,13 @@ void handleSessionCmd(const String &v) {
     for (int i = 0; i < 16; i++) key[i] = (uint8_t)v[1 + i];
     uint8_t ch = (v.length() >= 18) ? (uint8_t)v[17] : 6;
     uint16_t sid = (uint16_t)key[0] | ((uint16_t)key[1] << 8);   // both sides derive sessionId from the key
-    // Commit any debounced edit BEFORE the role changes. The debounced save in loop() is gated to
-    // `syncRole != ROLE_FOLLOWER`, and joining flips the role immediately -- so an edit made within
-    // the 1500 ms debounce would never reach NVS, be overwritten in RAM by the leader's params, and
-    // be silently rolled back to its pre-edit value by the loadParams() on revert. Session
-    // formation is a rare, deliberate user action, so the NVS commit is affordable here.
-    if (paramsDirty) { paramsDirty = false; saveParams(); }
-    if (flipDirty)   { saveFlipNow(); }
-    if (op == 1) syncBecomeLeader(sid, key, ch);
-    else         syncJoinSession(sid, key, ch);
+    // DEFER to core 1 (see PendingSession): forming a session must first commit any debounced edit,
+    // and NVS access belongs on the render core with every other Preferences call.
+    portENTER_CRITICAL(&sessionMux);
+    pendingSession.op = op; pendingSession.sid = sid; pendingSession.channel = ch;
+    memcpy(pendingSession.key, key, 16);
+    pendingSession.pending = true;
+    portEXIT_CRITICAL(&sessionMux);
   } else if (op == 3) {
     syncDisband();
   } else if (op == 4) {
@@ -463,7 +513,8 @@ class CharCB : public BLECharacteristicCallbacks {
     else if (uuid == CH_FLIP)     { uint8_t f = min((int)(uint8_t)v[0], 1);
                                     flipped = f; chSetU8(c, f);            // echo the clamped value back
                                     flipDirty = true;
-                                    flipConfirmUntilMs = millis() + FLIP_CONFIRM_MS;
+                                    uint32_t until = millis() + FLIP_CONFIRM_MS;
+                                    flipConfirmUntilMs = until ? until : 1;   // 0 means "not armed"
                                     return; }
     else return;                    // unknown characteristic: nothing to persist
 
@@ -787,6 +838,11 @@ void renderDotMap() {
 
 // Cycle epoch for the non-blocking render loop (esp_timer µs at the current cycle's u=0).
 static int64_t cycleEpochUs = 0;
+// Frame-skip: the last quantized u rendered. Negative values are sentinels — -1 nothing painted,
+// -2 rest gap blanked, -3/-4 the orientation-confirm dot map, tagged with the orientation it was
+// painted at so a second flip inside the window still repaints. File scope (not a function static)
+// so anything that paints the strip out of band can invalidate it.
+static float lastFrameU = -1.0f;
 static uint8_t  renderPrevControl = 0xFF;
 
 void loop() {
@@ -796,6 +852,7 @@ void loop() {
     paramsDirty = false; saveParams();
   }
 
+  servicePendingSession();   // BLE-callback-deferred session formation, incl. its NVS flush (core 1)
   syncDrainDeferred();       // perform RX-callback-deferred revert/identify here on core 1 (#1/#5)
   leaderBeaconTick();        // leader: broadcast the SyncBeacon at 4 Hz (no-op otherwise)
   syncServiceTimeouts();     // follower: T_JOIN/orphan revert; leader: prune + backstop (no-op otherwise)
@@ -807,9 +864,6 @@ void loop() {
     return;
   }
 
-  static float lastFrameU = -1.0f;      // frame-skip: last quantized u rendered
-                                        // (-2 = rest gap blanked; -3/-4 = orientation-confirm dot
-                                        //  map, tagged with the orientation it was painted at)
   uint8_t c = control;
   // Not running (idle/preview): flush any staged kinematic edits to the live globals so preview/next-run
   // and the debounced NVS save see the latest values (§7).
@@ -836,17 +890,17 @@ void loop() {
       } else { control = 0; renderPrevControl = 0xFF; notifyControl();    // single done → idle
                if (syncRole == ROLE_LEADER) leaderMarkEvent(); }          // #11: burst the idle transition to followers
     } else if (u >= cd) {
-      // Dark rest gap. Commit a pending orientation here: the strip is already blanked, so the NVS
-      // stall is invisible, and this is the only safe point that recurs while the stick keeps
-      // looping (see saveFlipNow). With restMs == 0 there is no gap and the commit waits for idle.
-      if (flipDirty && syncRole != ROLE_FOLLOWER) saveFlipNow();
-      // The dot map is static, so paint it ONCE on entry rather than every 4 ms tick — a 144-LED
-      // latch takes ~4.3 ms, so repainting at loop rate would latch back to back. The sentinel
-      // carries the orientation so a second flip inside the window still forces a repaint.
+      // Dark rest gap. The dot map is static, so paint it ONCE on entry rather than every 4 ms tick
+      // — a 144-LED latch takes ~4.3 ms, so repainting at loop rate would latch back to back. The
+      // sentinel carries the orientation so a second flip inside the window still forces a repaint.
       if (flipConfirmActive()) {
         const float tag = flipped ? -3.0f : -4.0f;
         if (lastFrameU != tag) { lastFrameU = tag; renderDotMap(); }                      // orientation answer
       } else if (lastFrameU != -2.0f) { lastFrameU = -2.0f; clearLeds(); showFrame(); }   // blank once
+      // Commit a pending orientation AFTER the paint, so the NVS stall lands on an already-dark
+      // strip. This is the only safe point that recurs while the stick keeps looping (see
+      // saveFlipNow); with restMs == 0 there is no gap and the commit waits for idle.
+      if (flipDirty) saveFlipNow();
     } else {
       float qu = gridQuantize(u);                          // shared frame grid (§3.4); skip duplicate frames
       if (qu != lastFrameU) { lastFrameU = qu; renderFrameAt(qu); }
@@ -854,12 +908,12 @@ void loop() {
     delay(4);                           // ~250 Hz service; the grid-paced core-1 render task lands with sync (plan §3.5)
   } else if (c == 3) {                  // preview: live dot map for the active mode
     renderPrevControl = 0xFF;
-    if (flipDirty && syncRole != ROLE_FOLLOWER) saveFlipNow();
+    if (flipDirty) saveFlipNow();
     renderDotMap();                     // includes the purple dot when enabled, so it can be placed live
     delay(30);
   } else {                              // idle: dim center marker so you can line up
     renderPrevControl = 0xFF;
-    if (flipDirty && syncRole != ROLE_FOLLOWER) saveFlipNow();
+    if (flipDirty) saveFlipNow();
     if (flipConfirmActive()) {          // just flipped: show the dot map, not a single dim pixel
       renderDotMap();
     } else {

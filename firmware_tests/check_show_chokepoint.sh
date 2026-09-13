@@ -16,6 +16,14 @@
 #   3. FastLED.clear()    appears nowhere — it clears the array bound to the controller, which
 #      is physLeds[], so the renderer would compose onto a stale logical frame.
 #   4. physLeds[]         is touched only by showFrame() and the FastLED binding.
+#   5. addLeds             binds physLeds[], not leds[]. This is the single most load-bearing line
+#                          in the design — bind the logical buffer instead and the flip silently
+#                          stops working entirely, with everything else still compiling and passing.
+#   6. showFrame()         copies the WHOLE strip, both ways (a short loop bound would drop LEDs).
+#   7. `flipped`           is read only where it may be: the output copy, persistence, the GATT
+#                          handler, the confirm tag, and the sync revert. Never by the renderer —
+#                          that is what makes the flip a pure output transform, and no host test
+#                          can check it, because a host test does not read the .ino.
 #
 # A new FastLED.show() added anywhere else is the realistic future regression — an element that
 # renders unmirrored on a flipped stick — and a compile cannot catch it. This can.
@@ -32,20 +40,14 @@ fail=0
 say_fail() { printf '  FAIL %s\n' "$1"; fail=$((fail + 1)); }
 say_ok()   { printf '  ok   %s\n' "$1"; }
 
-# Code-only view of a file: blank out // comments, keep line numbering intact.
-code() { sed 's|//.*||' "$1" | grep -n "$2" | sed "s|^|$1:|"; }
-
-scan() {
-  pattern=$1
-  out=''
-  for f in $files; do
-    hits=$(code "$f" "$pattern" || true)
-    [ -n "$hits" ] && out="$out$hits
-"
-  done
-  printf '%s' "$out" | grep -c . 2>/dev/null || true
-  :
+# Code-only view of a file: blank out // and /* */ comments, keep line numbering intact.
+# (Block comments are handled line-wise, which is enough for this codebase's style and avoids a
+#  spurious CI failure when prose mentions one of the banned names.)
+code() {
+  sed -e 's|//.*||' -e 's|/\*[^*]*\*/||g' -e '\|/\*|,\|\*/|s|.*||' "$1" \
+    | grep -n "$2" | sed "s|^|$1:|"
 }
+
 matches() {
   pattern=$1
   for f in $files; do code "$f" "$pattern" || true; done
@@ -80,7 +82,10 @@ fi
 
 # --- 2/3. No other output or clear path ------------------------------------------------
 for pat_desc in 'FastLED\.clear(true)|calls showColor(), a second output path that bypasses leds[]' \
-                'FastLED\.clear()|clears physLeds[] (the bound array), not the logical frame — use clearLeds()'; do
+                'FastLED\.clear()|clears physLeds[] (the bound array), not the logical frame — use clearLeds()' \
+                'FastLED\.showColor|is a second output path that never reads the frame buffer at all' \
+                'FastLED\.clearData|writes the bound array behind the renderer' \
+                'FastLED\.delay|latches repeatedly outside showFrame()'; do
   pat=${pat_desc%%|*}; why=${pat_desc#*|}
   hits=$(matches "$pat")
   if [ -n "$hits" ]; then
@@ -113,6 +118,54 @@ if [ -f "${TMPDIR:-/tmp}/chokepoint_stray.$$" ]; then
   rm -f "${TMPDIR:-/tmp}/chokepoint_stray.$$"
 else
   say_ok "physLeds[] is private to showFrame() (+ the FastLED binding)"
+fi
+
+# --- 5. addLeds must bind the PHYSICAL buffer -------------------------------------------
+bind=$(matches 'addLeds')
+if [ -z "$bind" ]; then
+  say_fail "no addLeds call found — where is the strip bound?"
+elif printf '%s' "$bind" | grep -q 'physLeds'; then
+  say_ok "addLeds binds physLeds[] (the flip's output buffer)"
+else
+  say_fail "addLeds does NOT bind physLeds[] — the flip silently does nothing:"
+  printf '%s\n' "$bind" | sed 's/^/         /'
+fi
+
+# --- 6. showFrame() must copy the whole strip, both ways ---------------------------------
+sf=$(grep -n 'void showFrame()' "$root/tempo_trainer/tempo_trainer.ino" | head -1 | cut -d: -f1 || true)
+if [ -n "$sf" ]; then
+  sfend=$(awk -v s="$sf" 'NR > s && /^}/ { print NR; exit }' "$root/tempo_trainer/tempo_trainer.ino")
+  bounds=$(sed -n "${sf},${sfend}p" "$root/tempo_trainer/tempo_trainer.ino" | grep -c 'i < NUM_LEDS;' || true)
+  if [ "$bounds" -eq 2 ]; then
+    say_ok "showFrame() copies the full strip in both orientations"
+  else
+    say_fail "showFrame() has $bounds full-length loop bounds, expected 2 (i < NUM_LEDS) — a short bound drops LEDs"
+  fi
+fi
+
+# --- 7. the renderer must never read `flipped` ------------------------------------------
+# This is the invariant that makes the flip a pure OUTPUT transform, and it is the one thing no
+# host test can check — a host test re-implements the renderer, it does not read the .ino. Stated
+# positively, per function, rather than as an allowlist of legitimate lines: the question is which
+# function a read sits in, not what the line looks like.
+renderers="renderFrameAt drawCometAnalytic renderDotMap showMarkers showRefs positionAt strokeDirAt aim2LitAt"
+flip_leak=''
+for f in $files; do
+  for fn in $renderers followerRenderStep; do
+    d=$(grep -n "^[A-Za-z].*[ *]$fn(" "$f" | head -1 | cut -d: -f1 || true)
+    [ -z "$d" ] && continue
+    e=$(awk -v s="$d" 'NR >= s && NR > s && /^}/ { print NR; exit }' "$f")
+    [ -z "$e" ] && continue
+    hit=$(sed -n "${d},${e}p" "$f" | sed 's|//.*||' | grep -n 'flipped' || true)
+    [ -n "$hit" ] && flip_leak="$flip_leak$(basename "$f") $fn(): $hit
+"
+  done
+done
+if [ -n "$flip_leak" ]; then
+  say_fail "the renderer reads 'flipped' — the flip must be an OUTPUT transform, not baked into composition:"
+  printf '%s' "$flip_leak" | sed 's/^/         /'
+else
+  say_ok "no renderer function reads 'flipped' (it is a pure output transform)"
 fi
 
 printf '\n'

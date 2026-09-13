@@ -331,16 +331,20 @@ void syncDrainDeferred() {
   if (statusDirty)     { statusDirty = false;     notifyFollowerStatus(); }   // #1: deferred …0012 BLE notify
   if (disbandPending)  { disbandPending = false;  syncDoDisband(); }          // #4/#6: deferred disband storm + teardown
   if (pendingRevert)   { pendingRevert = false;   syncRevertToStandalone(); }
-  // Clear AFTER the blink, not before: this flag now has two producers (the addressed ESP-NOW
-  // identify and the local …0013 op-4 path), and a read-then-clear would silently drop a request
-  // that arrived between the test and the clear. Coalescing repeats into one blink is the right
-  // semantics for "blink me".
-  if (identifyPending) { identifyBlink(); identifyPending = false; }
+  // Clear BEFORE the blink. Clearing after would swallow every request arriving during the 720 ms
+  // blink — tap identify twice and the second tap vanishes. Clearing first narrows the drop window
+  // to the few instructions between the test and the clear, and a request landing there simply
+  // re-arms the flag and is serviced on the next drain.
+  if (identifyPending) { identifyPending = false; identifyBlink(); }
 }
 
 // One follower render tick: send hello/ping, snapshot the shared state (seqlock), render off the
 // shared clock. Called from loop() (core 1). Stateless renderer ⇒ agree on u ⇒ identical frame (§3.4).
 static float followerLastFrameU = -1.0f;                      // frame-skip: last quantized u rendered (-2 = blanked)
+
+// Clear BOTH render paths' frame-skip state. Defined here because the follower's copy is private to
+// this tab; `lastFrameU` lives in the main tab. See the declaration there.
+void invalidateFrameSkip() { lastFrameU = -1.0f; followerLastFrameU = -1.0f; }
 void followerRenderStep() {
   followerHelloTick();
   followerPingTick();

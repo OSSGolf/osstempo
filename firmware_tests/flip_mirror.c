@@ -13,25 +13,24 @@
  *       72-amp — they differ by exactly one LED (6.9 mm) for EVERY reach. This is the assertion
  *       that earns its keep: it fails the day someone "simplifies" the output mirror into the
  *       rejected CENTER-amp geometry inversion, instead of that shipping as a silent asymmetry;
- *   (3) frame composition is INDEPENDENT of `flipped` — over every sampled cycle-time u, in both
- *       modes, across rails on/off x aim2 on/off x all four aim2When x inside/outside the
- *       get-ready window, the composed frame is byte-identical with the flag set and clear, and
- *       the physical frame is the exact element-wise reverse. This fails if anyone makes the
- *       renderer flip-aware (the rejected design), which is the real regression to guard;
- *   (4) flipping perturbs NO kinematics — positionAt / strokeDirAt / cycleDuration are
- *       bit-identical with the flag set, so the flip cannot change stroke timing or phase (the
- *       sync design depends on this: leader and follower must agree on u);
- *   (5) the mirror is colour- and count-preserving: lit-pixel count and total channel energy
- *       survive it, so nothing is dropped, duplicated, or dimmed.
+ *   (3) the mirror is an exact element-wise reversal of REAL frame content — swept over every
+ *       cycle-time u, in both modes, across rails on/off x aim2 on/off x all four aim2When x
+ *       inside/outside the get-ready window — and is colour- and count-preserving, so nothing is
+ *       dropped, duplicated, or dimmed by the transform.
  *
- * WHAT THIS DOES NOT PROVE, stated plainly. Like golden_kinematics.c this is a PORT, so it
- * checks the algebra, not that the .ino wires it up. In particular, assertion (3)'s frame
- * reversal is only meaningful as "composition ignores the flag" — it cannot prove that every
- * LED element reaches the mirror, because that is a STRUCTURAL property: the mirror is applied
- * to the finished buffer, so it is total as long as every render path latches through
- * showFrame(). firmware_tests/check_show_chokepoint.sh is what enforces that premise, by
- * asserting FastLED.show() appears exactly once in the firmware and physLeds[] is private to
- * showFrame(). The two tests are complements; neither is sufficient alone. Run both.
+ * WHAT THIS DOES NOT PROVE, stated plainly, because an earlier version of this file overclaimed.
+ * Like golden_kinematics.c it is a PORT: it checks the algebra, not that the .ino wires it up.
+ * Two things it therefore cannot do, both of which used to be asserted here as unfailable
+ * tautologies and have been removed rather than left as green paint:
+ *
+ *   - It cannot show the renderer ignores the flip flag. This port's composeFrame does not take
+ *     `flipped` at all, so any such assertion compares a function against itself.
+ *   - It cannot show that every LED element reaches the mirror. That is structural: the mirror
+ *     is applied to the finished buffer, so it is total exactly as long as every render path
+ *     latches through showFrame() and FastLED is bound to the physical buffer.
+ *
+ * Both of those are enforced by firmware_tests/check_show_chokepoint.sh, which reads the actual
+ * .ino. The two tests are complements; neither is sufficient alone. Run both.
  *
  * Build & run:  cc -O2 -o /tmp/flipmirror firmware_tests/flip_mirror.c -lm && /tmp/flipmirror
  */
@@ -280,26 +279,6 @@ static void checkFrameSweep(const char *label, Profile p, int modeVal) {
     ok(label, d);
 }
 
-/* (3) the flip perturbs no kinematics. */
-static void checkKinematicsUnaffected(const char *label, Profile p, int modeVal) {
-    mode = modeVal;
-    unsigned dur = cycleDuration(&p);
-    for (unsigned u = 0; u <= dur; u++) {
-        flipped = 0;
-        float p0 = positionAt((float)u, &p); int d0 = strokeDirAt((float)u, &p); unsigned c0 = cycleDuration(&p);
-        flipped = 1;
-        float p1 = positionAt((float)u, &p); int d1 = strokeDirAt((float)u, &p); unsigned c1 = cycleDuration(&p);
-        flipped = 0;
-        if (p0 != p1 || d0 != d1 || c0 != c1) {
-            char d[120];
-            snprintf(d, sizeof d, "diverged at u=%u", u);
-            fail(label, d);
-            return;
-        }
-    }
-    ok(label, "position / direction / duration bit-identical");
-}
-
 /*
  * THE non-vacuous assertion. CENTER is 71.5, a half-integer, so reflecting the strip is NOT the
  * same as negating the stroke math:
@@ -336,27 +315,6 @@ static void checkNotGeometryInversion(void) {
     ok("reflection != geometry inversion", "differs by 1 LED for all 71 reaches");
 }
 
-/* The composed frame must not depend on the flag at all: the flip is an OUTPUT transform. */
-static void checkCompositionIgnoresFlag(const char *label, Profile p, int modeVal) {
-    CRGB a[NUM_LEDS], b[NUM_LEDS];
-    mode = modeVal;
-    unsigned dur = cycleDuration(&p);
-    for (unsigned u = 0; u <= dur; u++) {
-        flipped = 0; composeFrame(a, (float)u, &p);
-        flipped = 1; composeFrame(b, (float)u, &p);
-        flipped = 0;
-        for (int i = 0; i < NUM_LEDS; i++) {
-            if (!rgbEq(a[i], b[i])) {
-                char d[120];
-                snprintf(d, sizeof d, "renderer read the flag at u=%u led=%d", u, i);
-                fail(label, d);
-                return;
-            }
-        }
-    }
-    ok(label, "composed frame byte-identical with the flag set and clear");
-}
-
 int main(void) {
     Profile putt = { 700, 350, 58, 0,   0,  350, 0, 70, 1 };   /* the .ino PUTT default */
     Profile full = { 900, 300, 60, 150, 55, 300, 0, 70, 1 };   /* the .ino FULL default */
@@ -365,17 +323,9 @@ int main(void) {
     checkInvolutionAndIndexMap();
     checkNotGeometryInversion();
 
-    printf("The flip is an OUTPUT transform (the renderer never reads the flag):\n");
-    checkCompositionIgnoresFlag("PUTT composition ignores flipped", putt, MODE_PUTT);
-    checkCompositionIgnoresFlag("FULL composition ignores flipped", full, MODE_FULL);
-
-    printf("Whole-frame reversal (every LED element, every u, every rails/aim2 combination):\n");
+    printf("Exact whole-frame reversal of real content (every u, every rails/aim2 combination):\n");
     checkFrameSweep("PUTT flipped frame == reverse(normal)", putt, MODE_PUTT);
     checkFrameSweep("FULL flipped frame == reverse(normal)", full, MODE_FULL);
-
-    printf("Flip is a pure output transform (no kinematic effect):\n");
-    checkKinematicsUnaffected("PUTT kinematics unaffected by flip", putt, MODE_PUTT);
-    checkKinematicsUnaffected("FULL kinematics unaffected by flip", full, MODE_FULL);
 
     printf("\n%s (%d failure%s)\n", failures ? "FLIP MIRROR FAILED" : "FLIP MIRROR PASSED",
            failures, failures == 1 ? "" : "s");
