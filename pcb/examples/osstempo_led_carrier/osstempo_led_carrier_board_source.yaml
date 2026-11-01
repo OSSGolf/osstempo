@@ -1,0 +1,8 @@
+schema_version: 2
+mode: authored
+assembly_order:
+  mode: not_target
+system_design:
+  mode: not_target
+firmware:
+  mode: retained_intent

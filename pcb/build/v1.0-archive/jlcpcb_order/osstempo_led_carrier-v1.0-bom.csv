@@ -1,0 +1,4 @@
+Comment,Designator,Footprint,LCSC Part #
+22uF,"C1,C2,C4,C5,C6",C_0805_2012Metric,C45783
+100nF,C3,C_0603_1608Metric,C14663
+470R,R1,R_0805_2012Metric,C17710

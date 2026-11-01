@@ -1,0 +1,49 @@
+id: samtec-ssw-115-01-t-s
+kind: component_identity
+manufacturer: Samtec
+mpn: SSW-115-01-T-S
+category: pin_header
+package: 1x15_P2.54mm_Vertical
+datasheets:
+- type: datasheet
+  title: Samtec SSW-115-01-T-S socket strip product page
+  url: https://www.samtec.com/products/ssw-115-01-t-s
+  source_id: samtec_ssw_115_01_t_s
+asset_status:
+  symbol: resolved
+  footprint: resolved
+  model_3d: resolved
+  fabrication_ready: true
+assets:
+  symbol:
+    source_type: datasheet_pinout
+    name: PinSocket_1x15
+    source_id: samtec_ssw_115_01_t_s
+  footprint:
+    # v1.2 hand-solder land pattern: the official KiCad PinSocket_1x15_P2.54mm_Vertical
+    # (sha256 1bd2b09f...) with its 15 pads enlarged from 1.7 mm to 2.0 mm on the datasheet's
+    # 1.0 mm drill. Derived, never hand-edited: pcb/tools/make_socket_footprint.py.
+    source_type: datasheet_land_pattern
+    library: OSSTempo
+    name: PinSocket_1x15_P2.54mm_Vertical_Pad2.0
+    path: vendor_ecad/kicad_footprints/OSSTempo.pretty/PinSocket_1x15_P2.54mm_Vertical_Pad2.0.kicad_mod
+    provenance_id: samtec-ssw-115-01-t-s-hand-solder-land-pattern
+    sha256: 858c808d93b643d8a560f0d7db6ddbe8dadf1d84fbca3319e09421ff3dea4b42
+  model_3d:
+    source_type: official-kicad
+    path: vendor_ecad/kicad_3dmodels/Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x15_P2.54mm_Vertical.step
+    provenance_id: retained-3d-cache
+    board_model_ref: ${KIPRJMOD}/3dmodels/Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x15_P2.54mm_Vertical.step
+    sha256: 4b4f737f040adb188dd340a2dd5bf9bebb5a1d4213a334ab5d2d8d17e96f8020
+validation:
+  known_gaps:
+  - The ESP32 dev board is socketed here, not soldered, so it is absent from the board
+    netlist. No firmware-facing pin capability can be validated from this board source;
+    GPIO5 correctness is a firmware constant, checked in pcb_build_spec.md instead.
+policy:
+  no_fake_assets: true
+  notes: ESP32 dev-board socket (H1/H2). Hand-soldered, left unpopulated in the JLCPCB
+    assembly BOM. 1.0 mm drill / 2.0 mm pad (v1.2; 0.5 mm annular ring for hand soldering,
+    0.54 mm between neighbours). Rows sit 26.0 mm apart, centre to
+    centre - measured on the actual dev board. Solder both with the ESP32 plugged in
+    so they self-align to the real pin positions.

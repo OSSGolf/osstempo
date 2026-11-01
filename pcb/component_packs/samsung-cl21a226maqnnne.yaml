@@ -1,0 +1,63 @@
+id: samsung-cl21a226maqnnne
+kind: component_identity
+manufacturer: Samsung Electro-Mechanics
+mpn: CL21A226MAQNNNE
+category: ceramic_capacitor
+package: '0805'
+datasheets:
+- type: datasheet
+  title: Samsung CL21A226MAQNNNE product and datasheet listing
+  url: https://jlcpcb.com/partdetail/C45783
+  source_id: jlcpcb_c45783
+ratings:
+- id: rated_voltage
+  kind: voltage
+  value: 25.0
+  units: V
+  source_id: jlcpcb_c45783
+asset_status:
+  symbol: resolved
+  footprint: resolved
+  model_3d: resolved
+  fabrication_ready: true
+assets:
+  symbol:
+    source_type: official-kicad
+    name: Device:C
+  footprint:
+    source_type: official-kicad
+    library: Capacitor_SMD
+    name: C_0805_2012Metric
+    path: vendor_ecad/kicad_footprints/Capacitor_SMD.pretty/C_0805_2012Metric.kicad_mod
+    provenance_id: official-kicad-footprints
+    sha256: 62775a51fe74ba7f1b572de327bdbd3fc92582721b2abcaa47787865590d89cb
+  model_3d:
+    source_type: official-kicad
+    path: vendor_ecad/kicad_3dmodels/Capacitor_SMD.3dshapes/C_0805_2012Metric.step
+    provenance_id: retained-3d-cache
+    board_model_ref: ${KIPRJMOD}/3dmodels/Capacitor_SMD.3dshapes/C_0805_2012Metric.step
+    sha256: 9a669c1a2f1ea25b88b401acef6efeaa80a067bd7da9db6993de719a7fbe155c
+validation:
+  known_gaps:
+  - X5R dielectric derates with DC bias. Nominal 22 uF at 5 V bias is roughly 15-18 uF
+    effective, so C1+C2 deliver about 30-36 uF rather than 44 uF. Adequate for the
+    comet animation at BRIGHTNESS_DEFAULT 40; bright or full-strip use should inject
+    5 V at J2 and rely on the supply's own bulk.
+policy:
+  no_fake_assets: true
+  notes: Bulk decoupling at the WS2812B strip connector. Chosen over an SMD aluminium
+    electrolytic because electrolytics are frequently Extended on JLCPCB (~$3 feeder
+    fee) while this is a Basic part; it also removes any polarity-reversal risk. The
+    25 V rating (rather than 16 V) was picked deliberately to limit DC-bias derating
+    on the 5 V rail.
+distributors:
+  jlcpcb:
+    match_status: exact_mpn
+    query: CL21A226MAQNNNE
+    part_number: C45783
+    lcsc_id: C45783
+    manufacturer_part_number: CL21A226MAQNNNE
+    manufacturer: Samsung Electro-Mechanics
+    package: '0805'
+    product_url: https://jlcpcb.com/partdetail/C45783
+    last_checked: '2026-09-09'

@@ -29,6 +29,16 @@ arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnin
 - `0014 flip` (global, device-local, persisted) mirrors the finished frame end-for-end; it is the only characteristic the iOS app treats as **optional**, so older firmware still connects.
 - `000f`-`0011` are the **full-swing purple aiming dot** (per-mode): enabled, absolute LED position (skips other dots), and appear-moment (0 address / 1 top / 2 downswing / 3 impact); stays lit until the next rep, independent of `railsLit`.
 
+## PCB (`pcb/`)
+- Build with **`sh pcb/build.sh`** only. It runs validate twice, reseeds `pcb/routed/`, writes the
+  JLC order files, and **stops the Podman VM on exit** (idle it holds 2 cores + 4 GB). Never leave
+  the VM running after a build. The board builds with the `osstempo-patches` toolkit branch
+  (worktree `~/workspace/kicad-agent-toolkit-v1`; set `KICAD_AGENT` to its venv before `build.sh`).
+- Silkscreen artwork: `pcb/examples/osstempo_led_carrier/artwork/silk_back_v1_2.json` ->
+  `pcb/tools/make_logo_footprint.py --spec ... --board <built .kicad_pcb>`; the generator refuses
+  missing fonts and reads pad/via/hole keepouts from the board. Trust the 2D plot, not the 3D
+  render, for silkscreen checks.
+
 ## Gotchas (cost real debugging time)
 - **`createService()` GATT handles:** default 15 silently truncates the table after ~7 chars, and the Arduino BLE wrapper doesn't check the error. Count exactly: 1 + chars×2 + 1 per CCCD — today `1 + 19×2 + 2 = 41` against the 48 reserved. Symptom of getting it wrong: client sees only the first 6-7 chars → "incompatible device".
 - **`FastLED.show()` appears exactly once**, inside `showFrame()` — that's what makes the 180 flip (`0014`) total, since the mirror is applied to the finished frame. `FastLED.clear()`/`clear(true)` are banned (they touch the *physical* buffer / call `showColor()`); use `clearLeds()` + `showFrame()`. `firmware_tests/check_show_chokepoint.sh` enforces it.

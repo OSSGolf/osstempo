@@ -1,0 +1,57 @@
+id: cc0603krx7r9bb104
+kind: component_identity
+manufacturer: YAGEO
+mpn: CC0603KRX7R9BB104
+category: ceramic_capacitor
+package: '0603'
+datasheets:
+- type: datasheet
+  title: YAGEO CC0603KRX7R9BB104 product and datasheet listing
+  url: https://jlcpcb.com/partdetail/C14663
+  source_id: jlcpcb_c14663
+ratings:
+- id: rated_voltage
+  kind: voltage
+  value: 50.0
+  units: V
+  source_id: jlcpcb_c14663
+asset_status:
+  symbol: resolved
+  footprint: resolved
+  model_3d: resolved
+  fabrication_ready: true
+assets:
+  symbol:
+    source_type: official-kicad
+    name: Device:C
+  footprint:
+    source_type: official-kicad
+    library: Capacitor_SMD
+    name: C_0603_1608Metric
+    path: vendor_ecad/kicad_footprints/Capacitor_SMD.pretty/C_0603_1608Metric.kicad_mod
+    provenance_id: official-kicad-footprints
+    sha256: fe0dbfefbb181a0466f93a8de52d84ba7b00fcd9acdbb69575f4128a0af4e405
+  model_3d:
+    source_type: official-kicad
+    path: vendor_ecad/kicad_3dmodels/Capacitor_SMD.3dshapes/C_0603_1608Metric.step
+    provenance_id: retained-3d-cache
+    board_model_ref: ${KIPRJMOD}/3dmodels/Capacitor_SMD.3dshapes/C_0603_1608Metric.step
+    sha256: 4857b3dc717675bf1fb22edda622ac3b3ae03cf44d81eefaf3fa3ba3a86d84c1
+validation:
+  known_gaps: []
+policy:
+  no_fake_assets: true
+  notes: 100 nF X7R HF decoupling across the strip 5 V at the LED connector, next to
+    the 22 uF bulk ceramics. JLCPCB Basic part (no feeder fee); the most common 0603
+    100 nF in their catalogue. 50 V rating means DC-bias derating at 5 V is negligible.
+distributors:
+  jlcpcb:
+    match_status: exact_mpn
+    query: CC0603KRX7R9BB104
+    part_number: C14663
+    lcsc_id: C14663
+    manufacturer_part_number: CC0603KRX7R9BB104
+    manufacturer: YAGEO
+    package: '0603'
+    product_url: https://jlcpcb.com/partdetail/C14663
+    last_checked: '2026-09-09'

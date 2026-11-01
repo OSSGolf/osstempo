@@ -10,3 +10,14 @@ build/
 .vscode/
 *.swp
 *~
+
+# PCB (pcb/): toolkit version-pin file is copied from the private kicad-agent-toolkit
+# checkout by pcb/setup-toolkit.sh - not ours to redistribute
+pcb/.ci/
+# pcb/build/ is NOT Arduino output: the JLCPCB order sets (and the archived revisions)
+# are committed, only the toolkit's run/release trees (300+ MB, regenerated) are not
+!pcb/build/
+pcb/build/kicad-agent/
+
+# Python bytecode (pcb/tools)
+__pycache__/

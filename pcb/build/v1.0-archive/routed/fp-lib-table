@@ -1,0 +1,8 @@
+(fp_lib_table
+	(lib (name "osstempo_led_carrier")(type "KiCad")(uri "${KIPRJMOD}/footprints/osstempo_led_carrier.pretty")(options "")(descr "OSSTempo ESP32 LED Carrier local footprints"))
+	(lib (name "Connector_PinSocket_2.54mm")(type "KiCad")(uri "${KIPRJMOD}/footprint-libraries/Connector_PinSocket_2.54mm.pretty")(options "")(descr "Official KiCad 2.54 mm pin-socket footprints"))
+	(lib (name "Connector_JST")(type "KiCad")(uri "${KIPRJMOD}/footprint-libraries/Connector_JST.pretty")(options "")(descr "Official KiCad JST connector footprints"))
+	(lib (name "Resistor_SMD")(type "KiCad")(uri "${KIPRJMOD}/footprint-libraries/Resistor_SMD.pretty")(options "")(descr "Official KiCad resistor footprints"))
+	(lib (name "Capacitor_SMD")(type "KiCad")(uri "${KIPRJMOD}/footprint-libraries/Capacitor_SMD.pretty")(options "")(descr "Official KiCad capacitor footprints"))
+	(lib (name "OSSTempo")(type "KiCad")(uri "${KIPRJMOD}/footprint-libraries/OSSTempo.pretty")(options "")(descr "OSSTempo silkscreen logo, text baked to outlines"))
+)

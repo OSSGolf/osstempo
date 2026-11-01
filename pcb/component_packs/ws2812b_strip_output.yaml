@@ -1,0 +1,59 @@
+id: ws2812b_strip_output
+kind: rule_pack
+title: WS2812B strip output connector support rules
+# Applied to the 3-pin LED-out header. Encodes what the WS2812B datasheet and the
+# NeoPixel best-practice guide say a strip feed needs: a series resistor on DIN at
+# the driving end and capacitance across the strip supply at the connector. v1.1
+# dropped the separate 100 nF "HF" cap: six identical 22 uF 0805 ceramics already
+# have HF impedance as low as a 100 nF part, so one part number does both jobs.
+applies_to_components: [jst-s3b-xh-a-lf-sn]
+sources:
+- id: worldsemi_ws2812b_datasheet
+  title: WorldSemi WS2812B intelligent control LED datasheet
+  url: https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf
+- id: adafruit_neopixel_best_practices
+  title: Adafruit NeoPixel Uberguide - Best Practices
+  url: https://learn.adafruit.com/adafruit-neopixel-uberguide/best-practices
+
+rules:
+- name: WS2812B strip output pinout
+  sources: [worldsemi_ws2812b_datasheet]
+  checks:
+  - type: pin_net
+    pin: '3'
+    net: ${strip_supply_net}
+    message: Strip connector pin 3 (right, opening toward the edge) must carry the strip 5 V supply
+  - type: pin_net
+    pin: '1'
+    net: ${ground_net}
+    message: Strip connector pin 1 (left) must be GND - matches the Dig2go cable
+  - type: pin_not_net
+    pin: '2'
+    net: ${gpio_net}
+    message: DIN must not be tied straight to the GPIO - it goes through the series resistor
+
+- name: DIN series damping resistor at the source end
+  sources: [adafruit_neopixel_best_practices]
+  checks:
+  - type: passive_between
+    a:
+      pin: '2'
+    b:
+      net: ${gpio_net}
+    symbol: Resistor
+    min_value: 300R
+    max_value: 500R
+    message: DIN needs a 300-500 ohm series resistor between the GPIO and the connector
+
+- name: Strip supply decoupling at the connector
+  sources: [adafruit_neopixel_best_practices]
+  checks:
+  - type: passive_count_between
+    a:
+      pin: '3'
+    b:
+      net: ${ground_net}
+    symbol: Capacitor
+    value: ${bulk_cap_value}
+    count: 6
+    message: Six 22 uF ceramics must sit across the strip supply at the connector

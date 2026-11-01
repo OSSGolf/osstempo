@@ -1,0 +1,26 @@
+{
+  "note": "osstempo LED carrier: the only KiCad symbols the board uses. Each file is byte-identical to the upstream file at the commit below (verified by fetching from GitLab and comparing).",
+  "source": "https://gitlab.com/kicad/libraries/kicad-symbols.git",
+  "tag": "10.0.0",
+  "commit": "495444d353551ba5f610d47d22c979c50b0bd70c",
+  "license": "CC-BY-SA-4.0 with the KiCad libraries exception (LICENSE.md)",
+  "verified": "2026-09-10",
+  "files": [
+    {
+      "path": "Device.kicad_symdir/C.kicad_sym",
+      "sha256": "533df5a016c224a83701e2e66b767864f39fc44c972a2a4f821987f1fd99573e"
+    },
+    {
+      "path": "Device.kicad_symdir/R.kicad_sym",
+      "sha256": "db1dd3eb60dbcc9e239d107e2d123ee253aefdd841186076e9df39444d4e11c7"
+    },
+    {
+      "path": "power.kicad_symdir/PWR_FLAG.kicad_sym",
+      "sha256": "5308c8c77530d5ba458ca658925119069cb6cb8ad6fbf424d88afb1fdb4e3ef1"
+    },
+    {
+      "path": "LICENSE.md",
+      "sha256": "45d2bce75e5a4208f5afb01b8fb2c406e700371c4fe2b5f5cd5c443d46db4d8f"
+    }
+  ]
+}

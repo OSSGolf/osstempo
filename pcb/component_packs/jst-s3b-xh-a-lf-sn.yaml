@@ -1,0 +1,41 @@
+id: jst-s3b-xh-a-lf-sn
+kind: component_identity
+manufacturer: JST
+mpn: S3B-XH-A(LF)(SN)
+category: pin_header
+package: 1x03_P2.50mm_Horizontal
+datasheets:
+- type: datasheet
+  title: JST XH series connector datasheet
+  url: http://www.jst-mfg.com/product/pdf/eng/eXH.pdf
+  source_id: jst_xh_datasheet
+asset_status:
+  symbol: resolved
+  footprint: resolved
+  model_3d: resolved
+  fabrication_ready: true
+assets:
+  symbol:
+    source_type: datasheet_pinout
+    name: JST_XH_1x03
+    source_id: jst_xh_datasheet
+  footprint:
+    source_type: official-kicad
+    library: Connector_JST
+    name: JST_XH_S3B-XH-A_1x03_P2.50mm_Horizontal
+    path: vendor_ecad/kicad_footprints/Connector_JST.pretty/JST_XH_S3B-XH-A_1x03_P2.50mm_Horizontal.kicad_mod
+    provenance_id: official-kicad-footprints
+    sha256: fd4ec7024452c2fee563d96272cabbf0c56a52f56dc828f82ae3a5a32e287ee1
+  model_3d:
+    source_type: official-kicad
+    path: vendor_ecad/kicad_3dmodels/Connector_JST.3dshapes/JST_XH_S3B-XH-A_1x03_P2.50mm_Horizontal.step
+    provenance_id: retained-3d-cache
+    board_model_ref: ${KIPRJMOD}/3dmodels/Connector_JST.3dshapes/JST_XH_S3B-XH-A_1x03_P2.50mm_Horizontal.step
+    sha256: 50ea9ab6db05247b101b387270e871b96953e49fc6e1bd4f2a6c0fc3e9e49711
+validation:
+  known_gaps: []
+policy:
+  no_fake_assets: true
+  notes: LED strip output (J1). The same 3-pin JST XH side-entry connector the QuinLED
+    Dig2go uses, so the Dig2go's XH-to-SM cable plugs straight in - keyed and latched, no
+    pigtail to solder. Hand-soldered THT, unpopulated in the JLCPCB assembly BOM.

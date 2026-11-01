@@ -1,0 +1,531 @@
+project:
+  name: osstempo_led_carrier
+  local_library: osstempo_led_carrier
+  namespace: https://kicad-agent.local/boards/osstempo-led-carrier
+  title: OSSTempo ESP32 LED Carrier
+  date: '2026-11-01'
+  revision: v1.2
+  company: OSSGolf
+  comments:
+  - Carrier board for the osstempo putting tempo trainer; see ../../pcb_build_spec.md
+  - A 30-pin ESP32 dev board is SOCKETED into H1/H2 and is not part of this netlist
+  - PIN MAPPING FOR H1/H2 IS UNVERIFIED - see the socket_pin_mapping note below
+
+# ---------------------------------------------------------------------------
+# socket_pin_mapping (READ BEFORE ORDERING)
+#
+# Only three ESP32 pins are used: 5V, GND and GPIO5. Everything else on H1/H2 is
+# deliberately left floating.
+#
+# Orientation: the ESP32's USB connector hangs off the TOP edge of this board
+# (the MH1/MH2 edge), and socket pin 1 is at that end. So with the dev board
+# component-side up and USB pointing away from you: the LEFT column top-to-bottom
+# is H1.1..H1.15 and the RIGHT column top-to-bottom is H2.1..H2.15.
+#
+# Verified against the DOIT DevKit V1 pinout for the board in hand (2026-09-10).
+# With USB at the top: right column top-down is VIN, GND, D13, D12, D14, D27, D26,
+# D25, D33, D32, D35, D34, VN, VP, EN; left column top-down is 3V3, GND, D15, D2,
+# D4, RX2, TX2, D5, D18, D19, D21, RX0, TX0, D22, D23. Hence:
+#   H2.1 -> 5V        (VIN)
+#   H2.2 -> GND
+#   H1.2 -> GND       (second ground pin - free, and a lower-impedance return)
+#   H1.8 -> ESP32_IO5 (D5)
+# Routes are pad-anchored, so a change here moves the copper with it.
+# ---------------------------------------------------------------------------
+
+board:
+  fab_profile: jlcpcb_2layer_basic
+  capabilities: []
+  # Portrait, not the spec's 60 x 40. The socket pin span is 35.56 mm and the rows
+  # sit 26.0 mm apart, so a landscape 40 mm axis leaves no usable margin. 50 x 70
+  # also buys an exposed strip below the ESP32 body for the hand-soldered
+  # connectors, which would otherwise be trapped under the dev board.
+  outline:
+    shape: rect
+    center: [100.0, 100.0]
+    size: [50.0, 70.0]
+    # 3 mm corners: no snag, protects the corner holes (4.5 mm inset, 3.2 mm drill -
+    # the arc never reaches them). JLCPCB routes outer corners at any radius.
+    corner_radius: 3.0
+  generate_footprints: true
+  autoroute:
+    enabled: false
+  # Silkscreen artwork, baked to outline polygons by pcb/tools/make_logo_footprint.py so
+  # it is font-independent and renders identically in the container that makes the
+  # gerbers. board.artwork is a local toolkit patch - see pcb/toolkit-patches/.
+  # Back (the solder side), one footprint generated from artwork/silk_back_v1_2.json:
+  # the URL in the top band, a golf ball with the script logo between the socket
+  # columns, an arrow at every pin that gets solder (with labels on the signal pins),
+  # and "Designed in Austin, TX" in the bottom band.
+  artwork:
+  - ref: SILK1
+    at: [100.0, 100.0]
+    footprint: OSSTempo:Silk_Back_v1_2
+    layer: B.Cu
+  # Front, top edge, between the socket rows: which way the dev board goes in.
+  - ref: MARK1
+    at: [100.0, 69.0]
+    footprint: OSSTempo:Mark_USB_End
+    layer: F.Cu
+  mounting_holes:
+  - {ref: MH1, hide_reference: true, at: [79.5, 69.5], drill: 3.2, diameter: 6.0}
+  - {ref: MH2, hide_reference: true, at: [120.5, 69.5], drill: 3.2, diameter: 6.0}
+  - {ref: MH3, hide_reference: true, at: [79.5, 130.5], drill: 3.2, diameter: 6.0}
+  - {ref: MH4, hide_reference: true, at: [120.5, 130.5], drill: 3.2, diameter: 6.0}
+
+  # ---- Copper ------------------------------------------------------------------
+  # The toolkit's autorouter does not run on macOS, so the copper is authored here.
+  # Points are anchored to pads wherever a trace starts or ends on one, so a
+  # placement nudge or a pin-mapping fix moves the copper with it.
+  #
+  # v1.1 - BUILT FOR HAND SOLDERING. There is no copper pour on either layer.
+  # v1.0 had a solid GND plane on B.Cu and a GND pour on F.Cu with solid pad
+  # connections; every through-hole joint had to heat that copper and needed a
+  # heat gun. Three nets at < 0.5 A do not need a plane, so every net is a trace:
+  #   - 5V and DIN on F.Cu (unchanged paths), GND on B.Cu.
+  #   - Every through-hole pad touches at most ONE trace, and that trace necks to
+  #     0.6 mm for the last ~1.5-4 mm into the pad, so the pad is all the iron heats.
+  #   - The 26 unused socket pads touch no copper at all.
+  # Signals are 0.3 mm, minimum length, 45-degree corners.
+  routes:
+  # GPIO socket pad straight into the series resistor: 2.6 mm, source-end damping.
+  - net: ESP32_IO5
+    width: 0.3
+    points: [{ref: H1, pad: '8'}, {ref: R1, pad: '1'}]
+  # DIN: straight down from R1.2 at x = 93.9 (6 mm clear of the H1 pads), one short
+  # 45-degree step to pin 2's column, then a 4 mm perpendicular entry into J1.2.
+  - net: DIN
+    width: 0.3
+    points:
+    - {ref: R1, pad: '2'}
+    - [93.912, 117.412]
+    - [97.5, 121.0]
+    - {ref: J1, pad: '2'}
+  # 5V: off the VIN socket pad along the pin-1 row, then straight down the empty
+  # middle corridor on J1 pin 3's own column (x = 100), entering the pad from
+  # directly above exactly as DIN enters pin 2 - perpendicular, one width the whole
+  # way (the pad is wider than the trace), and under the housing only for the 2.4 mm
+  # rear lip that every pad sits beneath. The cap bus tees off at y = 118.
+  - net: 5V
+    width: 0.6
+    points: [{ref: H2, pad: '1'}, [111.0, 74.0]]
+  - net: 5V
+    width: 1.3
+    points: [[111.0, 74.0], [100.0, 74.0], [100.0, 121.0]]
+  - net: 5V
+    width: 0.6
+    points: [[100.0, 121.0], {ref: J1, pad: '3'}]
+  # Cap bus: tees off the drop at y = 117, comes down at x = 106.5 (3.5 mm clear of
+  # the connector outline), then runs BETWEEN the two cap rows at y = 121.1 so it only
+  # ever neighbours 5V pads.
+  - net: 5V
+    width: 1.3
+    points: [[100.0, 117.0], [106.5, 117.0], [106.5, 121.1], [118.0, 121.1]]
+  # Stubs from the bus into each 5V pad.
+  - net: 5V
+    width: 0.8
+    points: [{ref: C1, pad: '1'}, {ref: C1, pad: '1', offset: [0.0, 1.65]}]
+  - net: 5V
+    width: 0.8
+    points: [{ref: C2, pad: '1'}, {ref: C2, pad: '1', offset: [0.0, 1.65]}]
+  - net: 5V
+    width: 0.8
+    points: [{ref: C3, pad: '1'}, {ref: C3, pad: '1', offset: [0.0, 1.65]}]
+  # second cap row: 5V pads rise 2.6 mm onto the same bus
+  - net: 5V
+    width: 0.8
+    points: [{ref: C4, pad: '1'}, {ref: C4, pad: '1', offset: [0.0, -1.55]}]
+  - net: 5V
+    width: 0.8
+    points: [{ref: C5, pad: '1'}, {ref: C5, pad: '1', offset: [0.0, -1.55]}]
+  - net: 5V
+    width: 0.8
+    points: [{ref: C6, pad: '1'}, {ref: C6, pad: '1', offset: [0.0, -1.55]}]
+  # ---- GND, all on B.Cu ------------------------------------------------------
+  # Cross-tie between the two ESP32 GND pins (H1.2 and H2.2), under the dev board,
+  # necked to 0.6 mm for 2 mm at each socket pad.
+  - net: GND
+    layer: B.Cu
+    width: 0.6
+    points: [{ref: H1, pad: '2'}, [89.0, 76.54]]
+  - net: GND
+    layer: B.Cu
+    width: 1.0
+    points: [[89.0, 76.54], [111.0, 76.54]]
+  - net: GND
+    layer: B.Cu
+    width: 0.6
+    points: [[111.0, 76.54], {ref: H2, pad: '2'}]
+  # Trunk: straight down x = 95 (J1 pin 1's own column, 8 mm clear of the H1 row)
+  # and into J1.1 from directly above, necked for the last 4 mm.
+  - net: GND
+    layer: B.Cu
+    width: 1.0
+    points: [[95.0, 76.54], [95.0, 121.0]]
+  - net: GND
+    layer: B.Cu
+    width: 0.6
+    points: [[95.0, 121.0], {ref: J1, pad: '1'}]
+  # Cap ground bus: row 1 vias (C1, C2, C3) sit on y = 116.15; row 2 vias (C4,
+  # C5, C6) on y = 125.95, strapped up the x = 118 column to row 1.
+  - net: GND
+    layer: B.Cu
+    width: 1.0
+    points: [[95.0, 116.15], {ref: C3, pad: '2', offset: [0.0, -1.4]}]
+  - net: GND
+    layer: B.Cu
+    width: 1.0
+    points:
+    - {ref: C4, pad: '2', offset: [0.0, 1.4]}
+    - {ref: C6, pad: '2', offset: [0.0, 1.4]}
+    - {ref: C3, pad: '2', offset: [0.0, -1.4]}
+  # One via per SMD ground pad, down to the B.Cu ground bus.
+  - net: GND
+    width: 0.5
+    points: [{ref: C1, pad: '2'}, {ref: C1, pad: '2', offset: [0.0, -1.4]}]
+  - net: GND
+    width: 0.5
+    points: [{ref: C2, pad: '2'}, {ref: C2, pad: '2', offset: [0.0, -1.4]}]
+  - net: GND
+    width: 0.5
+    points: [{ref: C3, pad: '2'}, {ref: C3, pad: '2', offset: [0.0, -1.4]}]
+  - net: GND
+    width: 0.5
+    points: [{ref: C4, pad: '2'}, {ref: C4, pad: '2', offset: [0.0, 1.4]}]
+  - net: GND
+    width: 0.5
+    points: [{ref: C5, pad: '2'}, {ref: C5, pad: '2', offset: [0.0, 1.4]}]
+  - net: GND
+    width: 0.5
+    points: [{ref: C6, pad: '2'}, {ref: C6, pad: '2', offset: [0.0, 1.4]}]
+  vias:
+  - {net: GND, at: {ref: C1, pad: '2', offset: [0.0, -1.4]}}
+  - {net: GND, at: {ref: C2, pad: '2', offset: [0.0, -1.4]}}
+  - {net: GND, at: {ref: C3, pad: '2', offset: [0.0, -1.4]}}
+  - {net: GND, at: {ref: C4, pad: '2', offset: [0.0, 1.4]}}
+  - {net: GND, at: {ref: C5, pad: '2', offset: [0.0, 1.4]}}
+  - {net: GND, at: {ref: C6, pad: '2', offset: [0.0, 1.4]}}
+  # No ground_stitching and no zones: see the v1.1 note at the top of Copper.
+
+  # ---- Silkscreen -----------------------------------------------------------------
+  # Front: only the USB-end mark (and the JST footprint's own pin-1 triangle). Every
+  # designator and the old LED OUT label are gone - the back labels J1's pins. Back: see artwork above.
+
+layout_intent:
+  copper_layers:
+  - name: F.Cu
+    type: signal
+    role: component_side_routing
+  - name: B.Cu
+    type: signal
+    role: ground_routing
+
+schematic_layout:
+  paper: A3
+  margin: [20.32, 20.32]
+  cell_size: [180.34, 120.65]
+  column_width: 68.58
+  column_gap: 15.24
+  section_gap: 20.32
+  row_gap: 7.62
+  title_gap: 20.32
+  label_escape: 12.7
+  label_lane_gap: 1.27
+  # Symbol positions are derived from this grid (margin + cell + column stride), not
+  # from each component's `at`. Two constraints follow, both learned the hard way:
+  #   - at most two columns per section, or the third runs off the right of A3;
+  #   - everything stays in grid row 0. A 15-pin socket makes row 0 about 230 mm
+  #     tall, so anything placed in row 1 starts below the bottom of the page.
+  sections:
+  - id: esp32_socket
+    title: ESP32 Dev Board Socket
+    cell: [0, 0]
+    columns:
+    - [H1]
+    - [H2]
+  - id: power_and_led
+    title: LED Output and Decoupling
+    cell: [1, 0]
+    columns:
+    - [R1, J1, PF1, PF2, C6]
+    - [C1, C2, C3, C4, C5]
+
+net_classes:
+- name: Default
+  clearance: 0.2
+  min_track_width: 0.25
+  track_width: 0.25
+- name: Power
+  clearance: 0.25
+  min_track_width: 0.5
+  track_width: 1.0
+  nets:
+  - 5V
+  - GND
+- name: Data
+  clearance: 0.2
+  min_track_width: 0.3
+  track_width: 0.3
+  nets:
+  - ESP32_IO5
+  - DIN
+
+footprint_libraries:
+- name: Connector_PinSocket_2.54mm
+  path: vendor_ecad/kicad_footprints/Connector_PinSocket_2.54mm.pretty
+  source_type: official-kicad
+  description: Official KiCad 2.54 mm pin-socket footprints
+- name: Connector_JST
+  path: vendor_ecad/kicad_footprints/Connector_JST.pretty
+  source_type: official-kicad
+  description: Official KiCad JST connector footprints
+- name: Resistor_SMD
+  path: vendor_ecad/kicad_footprints/Resistor_SMD.pretty
+  source_type: official-kicad
+  description: Official KiCad resistor footprints
+- name: Capacitor_SMD
+  path: vendor_ecad/kicad_footprints/Capacitor_SMD.pretty
+  source_type: official-kicad
+  description: Official KiCad capacitor footprints
+# Silkscreen logo. Generated by pcb/tools/make_logo_footprint.py from Menlo Bold and
+# baked to outline polygons, so it renders identically everywhere - including the
+# font-less container that produces the fabrication gerbers.
+- name: OSSTempo
+  path: vendor_ecad/kicad_footprints/OSSTempo.pretty
+  source_type: generated
+  description: OSSTempo silkscreen artwork (baked outlines) and the hand-solder socket footprint derived from official KiCad
+
+footprint_policy:
+  allowed_source_types:
+  - official-kicad
+  - generated      # the silkscreen artwork and the 2.0 mm-pad socket derived from the official one
+  local_footprints: []
+
+placement_regions:
+- name: esp32_socket
+  label: ESP32 dev board socket (26.0 mm rows)
+  kind: rect
+  at: [100.0, 91.78]
+  size: [30.0, 39.0]
+  layer: Dwgs.User
+  label_at: [82.0, 69.0]
+  label_size: 0.9
+- name: connector_strip
+  label: LED connector + decoupling (clear of the ESP32 body)
+  kind: rect
+  at: [100.0, 125.5]
+  size: [46.0, 19.0]
+  layer: Dwgs.User
+  label_at: [79.0, 118.0]
+  label_size: 0.9
+
+symbols:
+- name: Resistor
+  value: R
+  footprint: Resistor_SMD:R_0805_2012Metric
+  description: Generic 2-terminal resistor
+  source:
+    kicad_sym: vendor_ecad/kicad_symbols/Device.kicad_symdir/R.kicad_sym
+    symbol: R
+- name: Capacitor
+  value: C
+  footprint: Capacitor_SMD:C_0805_2012Metric
+  description: Generic 2-terminal ceramic capacitor, 0805
+  source:
+    kicad_sym: vendor_ecad/kicad_symbols/Device.kicad_symdir/C.kicad_sym
+    symbol: C
+- name: Power_Flag
+  value: PWR_FLAG
+  footprint: ''
+  description: Schematic-only ERC power driver
+  in_bom: false
+  on_board: false
+  source:
+    kicad_sym: vendor_ecad/kicad_symbols/power.kicad_symdir/PWR_FLAG.kicad_sym
+    symbol: PWR_FLAG
+- name: PinSocket_1x15
+  value: Conn_01x15
+  # v1.2: the official footprint with 2.0 mm pads (0.5 mm annular ring instead of 0.35)
+  # for hand soldering - derived by pcb/tools/make_socket_footprint.py, nothing else changed.
+  footprint: OSSTempo:PinSocket_1x15_P2.54mm_Vertical_Pad2.0
+  description: 15-way 2.54 mm socket, one row of the ESP32 dev-board seat (2.0 mm pads)
+  pins:
+  - {number: 1, name: P1, side: left}
+  - {number: 2, name: P2, side: left}
+  - {number: 3, name: P3, side: left}
+  - {number: 4, name: P4, side: left}
+  - {number: 5, name: P5, side: left}
+  - {number: 6, name: P6, side: left}
+  - {number: 7, name: P7, side: left}
+  - {number: 8, name: P8, side: left}
+  - {number: 9, name: P9, side: right}
+  - {number: 10, name: P10, side: right}
+  - {number: 11, name: P11, side: right}
+  - {number: 12, name: P12, side: right}
+  - {number: 13, name: P13, side: right}
+  - {number: 14, name: P14, side: right}
+  - {number: 15, name: P15, side: right}
+- name: JST_XH_1x03
+  value: S3B-XH-A
+  footprint: Connector_JST:JST_XH_S3B-XH-A_1x03_P2.50mm_Horizontal
+  description: LED strip output, JST XH side entry - GND / DIN / 5V (pin 1 = GND)
+  pins:
+  - {number: 1, name: GND, side: left}
+  - {number: 2, name: DIN, side: right}
+  - {number: 3, name: '5V', side: left}
+
+components:
+# --- ESP32 dev board socket. Rows 26.0 mm apart, centred on x = 100. -----------
+# Pads run along +Y from the origin, so each row spans y = 74.0 .. 109.56.
+- ref: H1
+  symbol: PinSocket_1x15
+  value: ESP32_SOCKET
+  at: [50.8, 50.8]
+  pcb_at: [87.0, 74.0]
+  pcb_no_reference_label: true
+  nets:
+    1: null
+    2: GND         # 3V3 is pin 1; pin 2 is the second GND on the dev board
+    3: null
+    4: null
+    5: null
+    6: null
+    7: null
+    8: ESP32_IO5   # D5 / GPIO5
+    9: null
+    10: null
+    11: null
+    12: null
+    13: null
+    14: null
+    15: null
+- ref: H2
+  symbol: PinSocket_1x15
+  value: ESP32_SOCKET
+  at: [50.8, 152.4]
+  pcb_at: [113.0, 74.0]
+  pcb_no_reference_label: true
+  nets:
+    1: 5V          # VIN
+    2: GND
+    3: null
+    4: null
+    5: null
+    6: null
+    7: null
+    8: null
+    9: null
+    10: null
+    11: null
+    12: null
+    13: null
+    14: null
+    15: null
+# --- LED output and its bulk decoupling --------------------------------------
+- ref: J1
+  symbol: JST_XH_1x03
+  value: LED_OUT
+  at: [228.6, 152.4]
+  pcb_at: [95.0, 125.0]
+  pcb_no_reference_label: true   # v1.2: no designators or labels on the front; the back says 5V/DIN/GND
+  nets:
+    1: GND
+    2: DIN
+    3: 5V
+- ref: R1
+  symbol: Resistor
+  value: 470R
+  at: [152.4, 152.4]
+  pcb_at: [93.0, 91.78]
+  pcb_no_reference_label: true
+  nets:
+    1: ESP32_IO5
+    2: DIN
+- ref: C1
+  symbol: Capacitor
+  value: 22uF
+  at: [203.2, 76.2]
+  pcb_at: [110.0, 118.5]
+  pcb_no_reference_label: true
+  pcb_rotation: 90
+  nets:
+    1: 5V
+    2: GND
+- ref: C2
+  symbol: Capacitor
+  value: 22uF
+  at: [203.2, 101.6]
+  pcb_at: [114.0, 118.5]
+  pcb_no_reference_label: true
+  pcb_rotation: 90
+  nets:
+    1: 5V
+    2: GND
+# J1 is the same JST XH side-entry connector the Dig2go uses, centred on the bottom
+# edge with its opening facing out, so the Dig2go's XH-to-SM cable plugs straight in.
+# Keyed: with the opening toward the bottom edge, pin 1 (GND) is on the left and pin 3
+# (5V) on the right - the Dig2go's 5V-left/GND-right arrangement rotated 180. Nothing
+# else sits within 5 mm of a J1 pad - it is hand-soldered and the iron needs room. The
+# caps live in their own row above it: C1, C2, C3 left to right
+# (C1 nearest), C4-C6 below them, on a short bus. The whole connector cluster sits in the band just
+# below the ESP32 body (y = 123), directly under the D5 socket column: DIN is a straight
+# drop, 5V has the empty middle corridor to itself, and nothing is within 7 mm of a
+# mounting hole or 9 mm of a board edge. J1 is a vertical header - the pigtail rises out
+# of it - so it never needed to be at the edge.
+- ref: C3
+  symbol: Capacitor
+  value: 22uF
+  at: [203.2, 127.0]
+  pcb_at: [118.0, 118.5]
+  pcb_no_reference_label: true
+  pcb_rotation: 90
+  nets:
+    1: 5V
+    2: GND
+# Three more 22 uF bulk ceramics - same Basic part as C1-C3, so no extra feeder.
+# Six in total: ~90 uF effective after DC-bias derating. The caps stand on end in
+# two rows with the 5V bus BETWEEN them: every 5V pad faces the bus, every GND pad
+# faces outward to its own via, so 5V copper is never beside a ground pad.
+- ref: C4
+  symbol: Capacitor
+  value: 22uF
+  at: [203.2, 152.4]
+  pcb_at: [110.0, 123.6]
+  pcb_no_reference_label: true
+  pcb_rotation: 270
+  nets:
+    1: 5V
+    2: GND
+- ref: C5
+  symbol: Capacitor
+  value: 22uF
+  at: [203.2, 177.8]
+  pcb_at: [114.0, 123.6]
+  pcb_no_reference_label: true
+  pcb_rotation: 270
+  nets:
+    1: 5V
+    2: GND
+- ref: C6
+  symbol: Capacitor
+  value: 22uF
+  at: [152.4, 177.8]
+  pcb_at: [118.0, 123.6]
+  pcb_no_reference_label: true
+  pcb_rotation: 270
+  nets:
+    1: 5V
+    2: GND
+# --- ERC power drivers --------------------------------------------------------
+- ref: PF1
+  symbol: Power_Flag
+  value: PWR_FLAG
+  at: [152.4, 101.6]
+  nets:
+    1: 5V
+- ref: PF2
+  symbol: Power_Flag
+  value: PWR_FLAG
+  at: [152.4, 127.0]
+  nets:
+    1: GND

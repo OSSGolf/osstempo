@@ -1,0 +1,554 @@
+{
+ "_comment": "Back (solder side) silkscreen, v1.2. Placed on B.Cu at board (100, 100); KiCad mirrors it, so local x = 100 - board x, local y = board y - 100 (and +x local is the viewer's LEFT on the real board). H1 pins at local x = +13, H2 at -13, pin k at y = -26 + 2.54(k-1); J1 (anchored on pin 1): GND x 5.0, DIN 2.5, 5V 0.0, all at y 25. Layout: the URL in the top band (no separate wordmark - the ball carries the brand); a 42 mm golf ball centred on the socket area (it runs past the pin columns; the pads punch clean rings through it), lit from the viewer's upper left (dimples are cup shadows that fade out toward the highlight), with the SignPainter 'OSSTempo' script and a '1' knocked out of it, Titleist-style, 18 mm wide, in the clear strip between the headers; 'Designed in Austin, TX' in the bottom band. Arrows mark every pin to solder: H1.2 GND, H1.8 D5, H2.1 5V, H2.2 GND, J1 x3, plus H1.1, H1.15, H2.8, H2.15 for mechanical stability (no legend, by choice). Every pad has a keepout (socket pads are 2.0 mm on v1.2); the base art drops dimples near labels and pads. Generate with --board <built .kicad_pcb>: the tool then clips to the board outline and adds a keepout around every pad, via and hole it finds there.",
+ "face": "Menlo",
+ "description": "OSSTempo v1.2 back silkscreen: Titleist-style golf ball with SignPainter script, solder-here arrows, pin labels, Designed in Austin TX (baked to outlines)",
+ "items": [
+  {
+   "shape": "arrow",
+   "tip": [
+    14.6,
+    -26.0
+   ],
+   "dir": "left",
+   "len": 1.3,
+   "width": 1.3
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    14.6,
+    -23.46
+   ],
+   "dir": "left",
+   "len": 1.3,
+   "width": 1.3
+  },
+  {
+   "text": "GND",
+   "size": 1.2,
+   "at": [
+    16.0,
+    -23.46
+   ],
+   "anchor": "left"
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    14.6,
+    -8.219999999999999
+   ],
+   "dir": "left",
+   "len": 1.3,
+   "width": 1.3
+  },
+  {
+   "text": "D5",
+   "size": 1.2,
+   "at": [
+    16.0,
+    -8.219999999999999
+   ],
+   "anchor": "left"
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    14.6,
+    9.560000000000002
+   ],
+   "dir": "left",
+   "len": 1.3,
+   "width": 1.3
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    -14.6,
+    -26.0
+   ],
+   "dir": "right",
+   "len": 1.3,
+   "width": 1.3
+  },
+  {
+   "text": "5V",
+   "size": 1.2,
+   "at": [
+    -16.0,
+    -26.0
+   ],
+   "anchor": "right"
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    -14.6,
+    -23.46
+   ],
+   "dir": "right",
+   "len": 1.3,
+   "width": 1.3
+  },
+  {
+   "text": "GND",
+   "size": 1.2,
+   "at": [
+    -16.0,
+    -23.46
+   ],
+   "anchor": "right"
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    -14.6,
+    -8.219999999999999
+   ],
+   "dir": "right",
+   "len": 1.3,
+   "width": 1.3
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    -14.6,
+    9.560000000000002
+   ],
+   "dir": "right",
+   "len": 1.3,
+   "width": 1.3
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    5.0,
+    26.3
+   ],
+   "dir": "up",
+   "len": 1.0,
+   "width": 1.1
+  },
+  {
+   "text": "GND",
+   "size": 0.8,
+   "at": [
+    5.0,
+    28.0
+   ]
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    2.5,
+    26.3
+   ],
+   "dir": "up",
+   "len": 1.0,
+   "width": 1.1
+  },
+  {
+   "text": "DIN",
+   "size": 0.8,
+   "at": [
+    2.5,
+    28.0
+   ]
+  },
+  {
+   "shape": "arrow",
+   "tip": [
+    0.0,
+    26.3
+   ],
+   "dir": "up",
+   "len": 1.0,
+   "width": 1.1
+  },
+  {
+   "text": "5V",
+   "size": 0.8,
+   "at": [
+    0.0,
+    28.0
+   ]
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -26.0
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -23.46
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -20.92
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -18.38
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -15.84
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -13.3
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -10.76
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -8.219999999999999
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -5.68
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -3.1400000000000006
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    -0.6000000000000014
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    1.9400000000000013
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    4.48
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    7.020000000000003
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    13.0,
+    9.560000000000002
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -26.0
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -23.46
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -20.92
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -18.38
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -15.84
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -13.3
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -10.76
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -8.219999999999999
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -5.68
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -3.1400000000000006
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    -0.6000000000000014
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    1.9400000000000013
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    4.48
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    7.020000000000003
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -13.0,
+    9.560000000000002
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    5.0,
+    25.0
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    2.5,
+    25.0
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    0.0,
+    25.0
+   ],
+   "r": 1.35
+  },
+  {
+   "role": "keepout",
+   "shape": "disc",
+   "at": [
+    -10.0,
+    16.15
+   ],
+   "r": 0.8
+  },
+  {
+   "text": "ossgolf.com · v1.2",
+   "size": 1.3,
+   "at": [
+    0.0,
+    -30.2
+   ]
+  },
+  {
+   "text": "Designed in Austin, TX",
+   "size": 1.0,
+   "at": [
+    0.0,
+    32.3
+   ]
+  },
+  {
+   "text": "OSSTempo",
+   "face": "SignPainter",
+   "bold": false,
+   "size": 4.0,
+   "fit_width_mm": 18.0,
+   "embolden_mm": 0.05,
+   "at": [
+    0.0,
+    -11.0
+   ]
+  },
+  {
+   "text": "1",
+   "face": "Times New Roman",
+   "bold": false,
+   "italic": true,
+   "size": 3.4,
+   "at": [
+    0.0,
+    -4.0
+   ],
+   "embolden_mm": 0.03
+  },
+  {
+   "role": "base",
+   "shape": "ball3d",
+   "style": "crescent",
+   "dimples": 900,
+   "dimple_frac": 0.42,
+   "light": [
+    0.45,
+    -0.55
+   ],
+   "shadow_curve": [
+    0.0,
+    1.1,
+    1.6
+   ],
+   "drop_thin": true,
+   "min_feature": 0.16,
+   "terminator": 2.4,
+   "rim_light": 0.5,
+   "rim": 0.3,
+   "clearance": 0.8,
+   "at": [
+    0.0,
+    -8.0
+   ],
+   "r": 21.0
+  }
+ ],
+ "origin": [
+  100.0,
+  100.0
+ ]
+}

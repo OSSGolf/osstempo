@@ -1,0 +1,20 @@
+#!/bin/sh
+# Apple Silicon shim for the toolkit's pinned KiBot container.
+#
+# The pinned image (ghcr.io/inti-cmnb/kicad10_auto @ the digest in .ci/toolchain.json)
+# is published for linux/amd64 only. Podman on an arm64 machine runs it under
+# emulation without trouble, but prints
+#     WARNING: image platform (linux/amd64) does not match the expected platform (linux/arm64)
+# to stderr on every `run`. The toolkit merges stderr into stdout and reads the
+# first line as the tool's version, so that warning breaks the version check.
+# Passing --platform explicitly is the only thing that silences it (log levels
+# do not), and the toolkit invokes `podman run` without it. This wrapper adds the
+# flag and hands everything else to the real binary untouched.
+#
+# It must be a real file, not a symlink: the toolkit resolves the podman path
+# before calling it, and a symlink would resolve straight past this script.
+REAL=/opt/homebrew/bin/podman
+case "$1" in
+  run|pull|create) sub=$1; shift; exec "$REAL" "$sub" --platform linux/amd64 "$@" ;;
+  *) exec "$REAL" "$@" ;;
+esac

@@ -1,0 +1,51 @@
+id: osstempo_led_carrier
+title: OSSTempo LED Carrier Layout Quality Checks
+# Route-dependent checks (route_path, net_bounding_box) are deliberately absent.
+# This board is hand-routed in the KiCad GUI because the toolkit's autorouter does
+# not run on macOS, so there is no generated copper for them to measure.
+checks:
+- id: socket_region_contains_rows
+  type: placement_region_refs
+  title: Both ESP32 socket rows sit inside the socket guide
+  region: esp32_socket
+  refs:
+  - H1
+  - H2
+- id: connector_strip_contains_hand_soldered_parts
+  type: placement_region_refs
+  title: Hand-soldered connectors and bulk caps stay clear of the ESP32 body
+  region: connector_strip
+  refs:
+  - J1
+  - C1
+  - C2
+  - C3
+  - C4
+  - C5
+  - C6
+# v1.1 has no copper pours (hand-soldering board), so the v1.0 plane checks -
+# bottom_ground_plane_only_has_ground_copper, two_layer_copper_balance and
+# gnd_stitching_via_density - no longer describe the design and are retired.
+- id: no_cross_net_shared_vias
+  type: via_sharing
+  title: No via location is shared across nets
+  nets: [5V, GND, ESP32_IO5, DIN]
+  location_tolerance_mm: 0.05
+- id: din_route_direct
+  type: route_path
+  title: DIN runs straight from the series resistor to the strip connector
+  net: DIN
+  from: R1.2
+  to: J1.2
+  enforce: true
+  max_length_mm: 58
+  max_ratio: 1.25
+- id: gpio_route_direct
+  type: route_path
+  title: GPIO5 reaches the series resistor with no detour
+  net: ESP32_IO5
+  from: H1.8
+  to: R1.1
+  enforce: true
+  max_length_mm: 6
+  max_ratio: 1.05

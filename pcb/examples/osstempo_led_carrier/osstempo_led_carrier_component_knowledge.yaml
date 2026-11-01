@@ -1,0 +1,13 @@
+# Schematic-intent rules, evaluated against the netlist on every validate run. The
+# pack lives in ../../component_packs/ and encodes what the WS2812B datasheet and
+# the NeoPixel guide require of the strip connector.
+rule_packs:
+- path: component_packs/ws2812b_strip_output.yaml
+  applies_to:
+    refs:
+    - J1
+  parameters:
+    strip_supply_net: 5V
+    ground_net: GND
+    gpio_net: ESP32_IO5
+    bulk_cap_value: 22uF

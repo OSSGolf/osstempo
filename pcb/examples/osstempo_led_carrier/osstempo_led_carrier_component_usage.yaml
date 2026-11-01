@@ -1,0 +1,29 @@
+project: osstempo_led_carrier
+global_component_library: component_packs
+uses:
+- component: samtec-ssw-115-01-t-s
+  refs:
+  - H1
+  - H2
+  observed_value: ESP32_SOCKET
+  observed_footprint: OSSTempo:PinSocket_1x15_P2.54mm_Vertical_Pad2.0
+- component: uni-royal-0805w8f4700t5e
+  refs:
+  - R1
+  observed_value: 470R
+  observed_footprint: Resistor_SMD:R_0805_2012Metric
+- component: samsung-cl21a226maqnnne
+  refs:
+  - C1
+  - C2
+  - C3
+  - C4
+  - C5
+  - C6
+  observed_value: 22uF
+  observed_footprint: Capacitor_SMD:C_0805_2012Metric
+- component: jst-s3b-xh-a-lf-sn
+  refs:
+  - J1
+  observed_value: LED_OUT
+  observed_footprint: Connector_JST:JST_XH_S3B-XH-A_1x03_P2.50mm_Horizontal

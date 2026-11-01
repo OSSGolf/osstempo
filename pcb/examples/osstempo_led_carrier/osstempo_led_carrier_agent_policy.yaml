@@ -1,0 +1,6 @@
+# Toolkit run policy for this board. tracked_work = every gate must pass for a release;
+# PF1/PF2 are real schematic symbols (in_bom: false), so nothing is listed as non-physical,
+# and no evidence checks are suppressed.
+target_stage: tracked_work
+non_physical_refs: []
+suppressions: []

@@ -1,0 +1,45 @@
+id: osstempo_led_carrier
+title: OSSTempo LED Carrier EMC Pre-Compliance Checks
+checks:
+- id: drc_clean
+  type: drc_clean
+  title: KiCad DRC report is clean before EMC review
+# reference_plane_coverage is deliberately absent: v1.1 has no reference plane.
+# It is a hand-soldering board with every net as a trace (GND on B.Cu); at an
+# 800 kHz strip data rate on a 10+ cm cable, the plane bought nothing worth a
+# heat gun.
+- id: gnd_via_count
+  type: net_via_count
+  title: Every SMD cap ground pad has its own via to the B.Cu ground bus
+  net: GND
+  min: 6
+- id: c1_close_to_led_connector
+  type: pad_distance
+  title: C1, the cap nearest the LED strip connector, stays there
+  from: C1.1
+  to: J1.3
+  max_mm: 12
+- id: c2_close_to_led_connector
+  type: pad_distance
+  title: C2 is close to the LED strip connector
+  from: C2.1
+  to: J1.3
+  max_mm: 16
+- id: c3_close_to_led_connector
+  type: pad_distance
+  title: C3 is close to the LED strip connector
+  from: C3.1
+  to: J1.3
+  max_mm: 20
+# decoupling_loop_length (J1.1/J1.3 vs C1) is deliberately absent. The caps sit in
+# their own row >= 5 mm from J1 so the pigtail can be hand-soldered without crowding;
+# the geometric pad-to-pad proxy would read ~20 mm, but C1's ground side reaches J1.3
+# through a via 1.4 mm from its pad onto the B.Cu ground bus, and its 5V side is 3.1 mm of stub
+# onto a 1.3 mm bus. For an 800 kHz strip on a 10+ cm pigtail that is not the loop
+# that matters. The pad-distance checks above bound where C1 may sit.
+- id: series_resistor_close_to_source
+  type: pad_distance
+  title: The 470 ohm series resistor stays at the GPIO source end, not the strip end
+  from: R1.1
+  to: H1.8
+  max_mm: 6

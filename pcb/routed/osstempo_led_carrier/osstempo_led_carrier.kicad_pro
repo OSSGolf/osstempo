@@ -1,0 +1,142 @@
+{
+  "board": {
+    "design_settings": {
+      "defaults": {},
+      "rule_severities": {
+        "footprint_filters_mismatch": "ignore",
+        "footprint_type_mismatch": "ignore",
+        "hole_to_hole": "error",
+        "lib_footprint_issues": "ignore",
+        "lib_footprint_mismatch": "ignore",
+        "missing_courtyard": "ignore"
+      },
+      "rules": {
+        "min_clearance": 0.15,
+        "min_copper_edge_clearance": 0.3,
+        "min_hole_to_hole": 0.2,
+        "min_through_hole_diameter": 0.3,
+        "min_track_width": 0.15,
+        "min_via_annular_width": 0.075,
+        "min_via_diameter": 0.45
+      }
+    }
+  },
+  "libraries": {
+    "pinned_footprint_libs": [],
+    "pinned_symbol_libs": []
+  },
+  "meta": {
+    "filename": "osstempo_led_carrier.kicad_pro",
+    "version": 3
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "bus_width": 12,
+        "clearance": 0.2,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "diff_pair_width": 0.25,
+        "line_style": 0,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "Default",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 2147483647,
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 0.25,
+        "tuning_profile": "",
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "wire_width": 6
+      },
+      {
+        "bus_width": 12,
+        "clearance": 0.25,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "diff_pair_width": 1.0,
+        "line_style": 0,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "Power",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 1,
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 1.0,
+        "tuning_profile": "",
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "wire_width": 6
+      },
+      {
+        "bus_width": 12,
+        "clearance": 0.2,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "diff_pair_width": 0.3,
+        "line_style": 0,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "Data",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 2,
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 0.3,
+        "tuning_profile": "",
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "wire_width": 6
+      }
+    ],
+    "meta": {
+      "version": 5
+    },
+    "net_colors": null,
+    "netclass_assignments": {
+      "5V": [
+        "Power"
+      ],
+      "GND": [
+        "Power"
+      ],
+      "ESP32_IO5": [
+        "Data"
+      ],
+      "DIN": [
+        "Data"
+      ]
+    },
+    "netclass_patterns": []
+  },
+  "schematic": {
+    "drawing": {},
+    "erc": {
+      "rule_severities": {
+        "footprint_link_issues": "ignore"
+      }
+    },
+    "legacy_lib_dir": "",
+    "legacy_lib_list": [],
+    "top_level_sheets": [
+      {
+        "filename": "osstempo_led_carrier.kicad_sch",
+        "name": "osstempo_led_carrier",
+        "uuid": "1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+      }
+    ]
+  },
+  "sheets": [
+    [
+      "1bba9a2c-ff95-5ef0-84b5-743b50c7bef4",
+      "Root"
+    ]
+  ],
+  "text_variables": {},
+  "tuning_profiles": {
+    "meta": {
+      "version": 0
+    },
+    "tuning_profiles_impedance_geometric": []
+  }
+}

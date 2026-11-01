@@ -1,0 +1,64 @@
+id: osstempo_led_carrier
+title: OSSTempo LED Carrier SPICE Checks
+testbenches:
+# Does DC-bias-derated ceramic alone hold the strip rail up during a comet step?
+# This is the check that justifies having no electrolytic. C1-C6 are six identical
+# 22 uF X5R 0805 parts rated 25 V; at 5 V bias each gives roughly 15-18 uF, so the
+# model uses 90 uF (6 x 15 uF, the pessimistic end).
+- id: strip_rail_droop_on_comet_step
+  title: STRIP_5V droop for a comet-sized load step
+  fidelity: ideal_passive_behavioral_source
+  cases:
+  - id: usb_powered_via_jp1
+    parameters: {}
+  netlist: |
+    * OSSTempo LED carrier - STRIP_5V support network.
+    * 5 V behavioural source. 0.35 ohm models the USB path plus the dev board's
+    * onboard 5 V trace; this is the pessimistic USB-powered case.
+    VUSB usb 0 DC 5.0
+    RPATH usb strip 0.35
+    CBULK strip 0 90u IC=5.0
+    * A comet lights a handful of WS2812B pixels at BRIGHTNESS_DEFAULT 40.
+    * 250 mA step is generous for that, with a 20 us edge.
+    ILOAD strip 0 PULSE(0 0.25 200u 20u 20u 2m 4m)
+    .tran 2u 1.2m uic
+    .meas tran strip_min_v MIN v(strip) FROM=200u TO=900u
+    .meas tran droop_v PARAM='5.0-strip_min_v'
+    .end
+  checks:
+  # WS2812B logic needs the rail well above its minimum; hold droop to 0.25 V so
+  # the 5 V rail never approaches the level where the first pixel misreads data.
+  - measurement: strip_min_v
+    min: 4.7
+    units: V
+  - measurement: droop_v
+    min: 0
+    max: 0.25
+    units: V
+# The series resistor plus the strip's input capacitance forms a low-pass filter on
+# the 800 kHz WS2812B data line. 470 ohm is the specced value; confirm the edge
+# still arrives fast enough to be sampled cleanly.
+- id: data_line_edge_rate
+  title: 470 ohm series resistor keeps the WS2812B data edge fast enough
+  fidelity: ideal_passive
+  cases:
+  - id: nominal
+    parameters: {}
+  netlist: |
+    * GPIO5 drives DIN through R1 into the strip's input capacitance.
+    * 3.3 V ESP32 output, 470 ohm series, ~30 pF of pin plus short-pigtail load.
+    VIO io 0 PULSE(0 3.3 0 5n 5n 600n 1250n)
+    RSER io din 470
+    CIN din 0 30p IC=0
+    .tran 1n 400n uic
+    .meas tran t10 WHEN v(din)=0.33 RISE=1
+    .meas tran t90 WHEN v(din)=2.97 RISE=1
+    .meas tran rise_10_90_s PARAM='t90-t10'
+    .end
+  checks:
+  # A WS2812B bit cell is 1.25 us; a T0H is 350 ns. Keep the 10-90% edge under
+  # 100 ns so the shortest pulse still has a flat top.
+  - measurement: rise_10_90_s
+    min: 0
+    max: 1.0e-07
+    units: s

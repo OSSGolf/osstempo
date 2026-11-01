@@ -1,0 +1,2884 @@
+(kicad_sch
+	(version 20250114)
+	(generator "kicad_agent_toolkit")
+	(generator_version "1")
+	(uuid "1bba9a2c-ff95-5ef0-84b5-743b50c7bef4")
+	(paper "A3")
+	(title_block
+		(title "OSSTempo ESP32 LED Carrier")
+		(date "2026-11-01")
+		(rev "v1.2")
+		(company "OSSGolf")
+		(comment 1 "Carrier board for the osstempo putting tempo trainer; see ../../pcb_build_spec.md")
+		(comment 2 "A 30-pin ESP32 dev board is SOCKETED into H1/H2 and is not part of this netlist")
+		(comment 3 "PIN MAPPING FOR H1/H2 IS UNVERIFIED - see the socket_pin_mapping note below")
+	)
+	(lib_symbols
+		(symbol "osstempo_led_carrier:Resistor"
+				(pin_numbers
+					(hide yes)
+				)
+				(pin_names
+					(offset 0)
+				)
+				(exclude_from_sim no)
+				(in_bom yes)
+				(on_board yes)
+				(in_pos_files yes)
+				(duplicate_pin_numbers_are_jumpers no)
+				(property "Reference" "R"
+					(at 2.032 0 90)
+					(show_name no)
+					(do_not_autoplace no)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Value" "R"
+					(at 0 0 90)
+					(show_name no)
+					(do_not_autoplace no)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Footprint" ""
+					(at -1.778 0 90)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Datasheet" ""
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Description" "Resistor"
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "ki_keywords" "R res resistor"
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "ki_fp_filters" "R_*"
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(symbol "Resistor_0_1"
+					(rectangle
+						(start -1.016 -2.54)
+						(end 1.016 2.54)
+						(stroke
+							(width 0.254)
+							(type default)
+						)
+						(fill
+							(type none)
+						)
+					)
+				)
+				(symbol "Resistor_1_1"
+					(pin passive line
+						(at 0 3.81 270)
+						(length 1.27)
+						(name ""
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+						(number "1"
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+					)
+					(pin passive line
+						(at 0 -3.81 90)
+						(length 1.27)
+						(name ""
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+						(number "2"
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+					)
+				)
+				(embedded_fonts no)
+			)
+		(symbol "osstempo_led_carrier:Capacitor"
+				(pin_numbers
+					(hide yes)
+				)
+				(pin_names
+					(offset 0.254)
+				)
+				(exclude_from_sim no)
+				(in_bom yes)
+				(on_board yes)
+				(in_pos_files yes)
+				(duplicate_pin_numbers_are_jumpers no)
+				(property "Reference" "C"
+					(at 0.635 2.54 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+						(justify left)
+					)
+				)
+				(property "Value" "C"
+					(at 0.635 -2.54 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+						(justify left)
+					)
+				)
+				(property "Footprint" ""
+					(at 0.9652 -3.81 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Datasheet" ""
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Description" "Unpolarized capacitor"
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "ki_keywords" "cap capacitor"
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "ki_fp_filters" "C_*"
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(symbol "Capacitor_0_1"
+					(polyline
+						(pts
+							(xy -2.032 0.762) (xy 2.032 0.762)
+						)
+						(stroke
+							(width 0.508)
+							(type default)
+						)
+						(fill
+							(type none)
+						)
+					)
+					(polyline
+						(pts
+							(xy -2.032 -0.762) (xy 2.032 -0.762)
+						)
+						(stroke
+							(width 0.508)
+							(type default)
+						)
+						(fill
+							(type none)
+						)
+					)
+				)
+				(symbol "Capacitor_1_1"
+					(pin passive line
+						(at 0 3.81 270)
+						(length 2.794)
+						(name ""
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+						(number "1"
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+					)
+					(pin passive line
+						(at 0 -3.81 90)
+						(length 2.794)
+						(name ""
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+						(number "2"
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+					)
+				)
+				(embedded_fonts no)
+			)
+		(symbol "osstempo_led_carrier:Power_Flag"
+				(power global)
+				(pin_numbers
+					(hide yes)
+				)
+				(pin_names
+					(offset 0)
+					(hide yes)
+				)
+				(exclude_from_sim no)
+				(in_bom yes)
+				(on_board yes)
+				(in_pos_files yes)
+				(duplicate_pin_numbers_are_jumpers no)
+				(property "Reference" "#FLG"
+					(at 0 1.905 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Value" "PWR_FLAG"
+					(at 0 3.81 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Footprint" ""
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Datasheet" ""
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "Description" "Special symbol for telling ERC where power comes from"
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(property "ki_keywords" "flag power"
+					(at 0 0 0)
+					(show_name no)
+					(do_not_autoplace no)
+					(hide yes)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(symbol "Power_Flag_0_0"
+					(pin power_out line
+						(at 0 0 90)
+						(length 0)
+						(name ""
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+						(number "1"
+							(effects
+								(font
+									(size 1.27 1.27)
+								)
+							)
+						)
+					)
+				)
+				(symbol "Power_Flag_0_1"
+					(polyline
+						(pts
+							(xy 0 0) (xy 0 1.27) (xy -1.016 1.905) (xy 0 2.54) (xy 1.016 1.905) (xy 0 1.27)
+						)
+						(stroke
+							(width 0)
+							(type default)
+						)
+						(fill
+							(type none)
+						)
+					)
+				)
+				(embedded_fonts no)
+			)
+		(symbol "osstempo_led_carrier:PinSocket_1x15"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+		(property "Reference" "P"
+			(at -10.16 15.24 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "Conn_01x15"
+			(at -10.16 12.7 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "OSSTempo:PinSocket_1x15_P2.54mm_Vertical_Pad2.0"
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "15-way 2.54 mm socket, one row of the ESP32 dev-board seat (2.0 mm pads)"
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+			(symbol "PinSocket_1x15_0_1"
+				(rectangle
+					(start -10.16 11.43)
+					(end 10.16 -11.43)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "PinSocket_1x15_1_1"
+				(pin passive line
+					(at -12.7 8.89 0)
+					(length 2.54)
+					(name "P1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -12.7 6.35 0)
+					(length 2.54)
+					(name "P2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -12.7 3.81 0)
+					(length 2.54)
+					(name "P3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -12.7 1.27 0)
+					(length 2.54)
+					(name "P4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -12.7 -1.27 0)
+					(length 2.54)
+					(name "P5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -12.7 -3.81 0)
+					(length 2.54)
+					(name "P6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -12.7 -6.35 0)
+					(length 2.54)
+					(name "P7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -12.7 -8.89 0)
+					(length 2.54)
+					(name "P8"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "8"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 12.7 7.62 180)
+					(length 2.54)
+					(name "P9"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "9"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 12.7 5.08 180)
+					(length 2.54)
+					(name "P10"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "10"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 12.7 2.54 180)
+					(length 2.54)
+					(name "P11"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "11"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 12.7 0 180)
+					(length 2.54)
+					(name "P12"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "12"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 12.7 -2.54 180)
+					(length 2.54)
+					(name "P13"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "13"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 12.7 -5.08 180)
+					(length 2.54)
+					(name "P14"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "14"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 12.7 -7.62 180)
+					(length 2.54)
+					(name "P15"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "15"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+		)
+		(symbol "osstempo_led_carrier:JST_XH_1x03"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+		(property "Reference" "J"
+			(at -10.16 10.16 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "S3B-XH-A"
+			(at -10.16 7.62 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Connector_JST:JST_XH_S3B-XH-A_1x03_P2.50mm_Horizontal"
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "LED strip output, JST XH side entry - GND / DIN / 5V (pin 1 = GND)"
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+			(symbol "JST_XH_1x03_0_1"
+				(rectangle
+					(start -10.16 6.35)
+					(end 10.16 -6.35)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "JST_XH_1x03_1_1"
+				(pin passive line
+					(at -12.7 1.27 0)
+					(length 2.54)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 12.7 0 180)
+					(length 2.54)
+					(name "DIN"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -12.7 -1.27 0)
+					(length 2.54)
+					(name "5V"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+		)
+	)
+	(text "ESP32 Dev Board Socket"
+		(exclude_from_sim no)
+		(at 20.32 20.32 0)
+		(effects
+			(font
+				(size 1.8 1.8)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "a672f8a2-eda7-5fa2-b3d2-d3a6e47f26ca")
+	)
+	(text "LED Output and Decoupling"
+		(exclude_from_sim no)
+		(at 220.98 20.32 0)
+		(effects
+			(font
+				(size 1.8 1.8)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "27dc6220-010f-58e1-9012-8185b967c81d")
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:PinSocket_1x15")
+		(at 54.61 52.07 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "4407e67d-f93a-5e2e-87f9-320936f3cdab")
+		(property "Reference" "H1"
+			(at 44.45 67.31 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "ESP32_SOCKET"
+			(at 44.45 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "OSSTempo:PinSocket_1x15_P2.54mm_Vertical_Pad2.0"
+			(at 54.61 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://www.samtec.com/products/ssw-115-01-t-s"
+			(at 54.61 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "15-way 2.54 mm socket, one row of the ESP32 dev-board seat (2.0 mm pads)"
+			(at 54.61 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SSW-115-01-T-S"
+			(at 54.61 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samtec"
+			(at 54.61 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "b79b19c2-9179-57ca-8c00-b8858270424a")
+		)
+		(pin "2"
+			(uuid "fab88395-167c-5334-a052-e4d83ecf6d07")
+		)
+		(pin "3"
+			(uuid "bcdb6d31-a9dc-50ac-a30a-26eba8ee5cb2")
+		)
+		(pin "4"
+			(uuid "0718266c-3832-5380-bf6d-3926a0a7534e")
+		)
+		(pin "5"
+			(uuid "516a249b-ee34-5e25-89af-3cadcc15bb16")
+		)
+		(pin "6"
+			(uuid "d049c43d-d27a-57b3-bbcf-be78b5449a05")
+		)
+		(pin "7"
+			(uuid "c81d8c96-8c99-5631-bdc0-b4391fe503f8")
+		)
+		(pin "8"
+			(uuid "72878534-4d0a-5551-a396-8559b285eba8")
+		)
+		(pin "9"
+			(uuid "514fb8ff-7b55-5e97-9392-1ec3a41e8976")
+		)
+		(pin "10"
+			(uuid "bf96ba05-4f9b-5a0e-aaea-c9af19f43737")
+		)
+		(pin "11"
+			(uuid "efa3cca3-2eee-5a2c-974f-b18ab8ec60b6")
+		)
+		(pin "12"
+			(uuid "31dc5ede-4114-5bd2-b2be-1ef2a94e93a0")
+		)
+		(pin "13"
+			(uuid "6c01f84b-fb86-5792-be11-77f8eb0eabf4")
+		)
+		(pin "14"
+			(uuid "5d80400a-a4cb-5bb1-bd8d-f60023705921")
+		)
+		(pin "15"
+			(uuid "3b74b9e6-728b-5cce-9c3b-cb0260b3782b")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "H1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:PinSocket_1x15")
+		(at 123.19 52.07 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "fc490834-1f4e-5739-86b6-feaa368189de")
+		(property "Reference" "H2"
+			(at 113.03 67.31 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "ESP32_SOCKET"
+			(at 113.03 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "OSSTempo:PinSocket_1x15_P2.54mm_Vertical_Pad2.0"
+			(at 123.19 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://www.samtec.com/products/ssw-115-01-t-s"
+			(at 123.19 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "15-way 2.54 mm socket, one row of the ESP32 dev-board seat (2.0 mm pads)"
+			(at 123.19 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SSW-115-01-T-S"
+			(at 123.19 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samtec"
+			(at 123.19 52.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "cb4c4a2e-eac8-5b02-8473-fb3c425f8418")
+		)
+		(pin "2"
+			(uuid "256fb61b-e4a3-5c3d-b418-ea964098df42")
+		)
+		(pin "3"
+			(uuid "26190bb6-b183-59e7-befe-752225c0cb28")
+		)
+		(pin "4"
+			(uuid "f06ec830-04b3-53d5-94a4-590dbabbc3a3")
+		)
+		(pin "5"
+			(uuid "e5ec0226-76bc-5dd2-a17a-246036404695")
+		)
+		(pin "6"
+			(uuid "c05f2b04-9830-55ea-95d5-949b2c6a9581")
+		)
+		(pin "7"
+			(uuid "fa566e97-2e97-5bb1-a1c5-4af3267af9a5")
+		)
+		(pin "8"
+			(uuid "4a92cff5-b31d-54c3-b3db-aab463c38758")
+		)
+		(pin "9"
+			(uuid "30227bb0-27a7-5964-add3-eeffcbf3542f")
+		)
+		(pin "10"
+			(uuid "1105ce11-0e65-5e8a-bc95-46e2ed020dfc")
+		)
+		(pin "11"
+			(uuid "e6558480-b005-5b59-a438-f5292fee1cf4")
+		)
+		(pin "12"
+			(uuid "65c9ab41-bc4c-53cd-ba73-57acf188e60d")
+		)
+		(pin "13"
+			(uuid "9004f7c4-32bd-5429-a743-a8677f6171e3")
+		)
+		(pin "14"
+			(uuid "c37a7962-2782-5d9c-b6b7-3538b6a5dc72")
+		)
+		(pin "15"
+			(uuid "3a1373ab-269d-5c33-8a12-9b9fdd7fe92b")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "H2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:JST_XH_1x03")
+		(at 250.19 62.23 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "5f6b05c9-2aec-5757-9cac-5c540afc824b")
+		(property "Reference" "J1"
+			(at 240.03 72.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "LED_OUT"
+			(at 240.03 69.85 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Connector_JST:JST_XH_S3B-XH-A_1x03_P2.50mm_Horizontal"
+			(at 250.19 62.23 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "http://www.jst-mfg.com/product/pdf/eng/eXH.pdf"
+			(at 250.19 62.23 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "LED strip output, JST XH side entry - GND / DIN / 5V (pin 1 = GND)"
+			(at 250.19 62.23 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "S3B-XH-A(LF)(SN)"
+			(at 250.19 62.23 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "JST"
+			(at 250.19 62.23 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "c1de7649-2380-51fa-96e2-80527857702a")
+		)
+		(pin "2"
+			(uuid "47e62c81-1a06-5246-8d8b-061c5982ed49")
+		)
+		(pin "3"
+			(uuid "a4b64938-7ea0-5f9f-86d8-f8ea26fa9db3")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "J1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Resistor")
+		(at 250.19 41.91 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "42bc492f-05b5-5a53-930c-ed77fdf02136")
+		(property "Reference" "R1"
+			(at 247.65 48.26 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "470R"
+			(at 247.65 45.72 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+			(at 250.19 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://jlcpcb.com/partdetail/18398-0805W8F4700T5E/C17710"
+			(at 250.19 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic 2-terminal resistor"
+			(at 250.19 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0805W8F4700T5E"
+			(at 250.19 41.91 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "UNI-ROYAL(Uniroyal Elec)"
+			(at 250.19 41.91 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "6091e2c0-6029-52d4-bdbd-7e756364460a")
+		)
+		(pin "2"
+			(uuid "43c7dfc3-7a85-5818-9f2d-9aa07ff08a18")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "R1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Capacitor")
+		(at 318.77 59.69 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "4f392ae1-fb10-5504-89cb-0d38af3cc80a")
+		(property "Reference" "C1"
+			(at 316.738 85.09 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "22uF"
+			(at 316.738 82.55 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 318.77 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://jlcpcb.com/partdetail/C45783"
+			(at 318.77 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic 2-terminal ceramic capacitor, 0805"
+			(at 318.77 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MAQNNNE"
+			(at 318.77 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 318.77 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "8097b529-3bf0-5df7-819f-db3aeafa3fbd")
+		)
+		(pin "2"
+			(uuid "4439df0e-cc0b-56bb-a388-44917793f3ea")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "C1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Capacitor")
+		(at 318.77 111.76 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "17a3bc91-17ac-59f6-8591-3ce54c74d373")
+		(property "Reference" "C2"
+			(at 316.738 137.16 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "22uF"
+			(at 316.738 134.62 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 318.77 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://jlcpcb.com/partdetail/C45783"
+			(at 318.77 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic 2-terminal ceramic capacitor, 0805"
+			(at 318.77 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MAQNNNE"
+			(at 318.77 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 318.77 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "34e6bfdc-a236-59a7-8873-da60f987cf5f")
+		)
+		(pin "2"
+			(uuid "4532eff7-59ae-54b3-8fec-b68bebc806ac")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "C2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Capacitor")
+		(at 318.77 163.83 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "1c31d8c2-5745-5af4-bda6-78ac0a57b6dd")
+		(property "Reference" "C3"
+			(at 316.738 189.23 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "22uF"
+			(at 316.738 186.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 318.77 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://jlcpcb.com/partdetail/C45783"
+			(at 318.77 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic 2-terminal ceramic capacitor, 0805"
+			(at 318.77 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MAQNNNE"
+			(at 318.77 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 318.77 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "8ee995c0-5de5-5a4f-9a61-e4711d53ad01")
+		)
+		(pin "2"
+			(uuid "f82ac42f-d94a-5136-961d-af3fec7c9d7b")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "C3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Capacitor")
+		(at 318.77 215.9 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "47655caa-6b33-5760-8871-dd6674264bfe")
+		(property "Reference" "C4"
+			(at 316.738 241.3 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "22uF"
+			(at 316.738 238.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 318.77 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://jlcpcb.com/partdetail/C45783"
+			(at 318.77 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic 2-terminal ceramic capacitor, 0805"
+			(at 318.77 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MAQNNNE"
+			(at 318.77 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 318.77 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "4892f6c8-a981-5615-a56e-cca97159093c")
+		)
+		(pin "2"
+			(uuid "8118e9be-1dca-53e8-aba4-a57b1e88aa4a")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "C4")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Capacitor")
+		(at 318.77 267.97 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "3114090f-85b1-566b-a75b-f16cb97f09fe")
+		(property "Reference" "C5"
+			(at 316.738 293.37 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "22uF"
+			(at 316.738 290.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 318.77 267.97 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://jlcpcb.com/partdetail/C45783"
+			(at 318.77 267.97 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic 2-terminal ceramic capacitor, 0805"
+			(at 318.77 267.97 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MAQNNNE"
+			(at 318.77 267.97 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 318.77 267.97 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "d3a566ce-752b-5125-a74d-dc070d53c7fe")
+		)
+		(pin "2"
+			(uuid "af7e8e3e-f070-54eb-9b2f-3e0c471a9b2f")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "C5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Capacitor")
+		(at 250.19 162.56 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "e147dca6-a0f3-5585-a06b-f625236cd218")
+		(property "Reference" "C6"
+			(at 248.158 187.96 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "22uF"
+			(at 248.158 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 250.19 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "https://jlcpcb.com/partdetail/C45783"
+			(at 250.19 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic 2-terminal ceramic capacitor, 0805"
+			(at 250.19 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "CL21A226MAQNNNE"
+			(at 250.19 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 250.19 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "6cf0db3a-6260-5ace-aeaa-58f9136f61d0")
+		)
+		(pin "2"
+			(uuid "ebcc47fd-a4c6-5adf-b1a7-cc8eae6204c6")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "C6")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Power_Flag")
+		(at 250.19 82.55 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "f6370650-9cb3-5fdb-b640-96626458e3bd")
+		(property "Reference" "PF1"
+			(at 249.174 102.87 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 249.174 100.33 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 250.19 82.55 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 250.19 82.55 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Schematic-only ERC power driver"
+			(at 250.19 82.55 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "56dc8030-071d-5b29-b616-7da62adedc0f")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "PF1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "osstempo_led_carrier:Power_Flag")
+		(at 250.19 113.03 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "9b8e4fca-2520-57bd-b256-df3873497c8e")
+		(property "Reference" "PF2"
+			(at 249.174 134.62 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 249.174 132.08 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 250.19 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 250.19 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Schematic-only ERC power driver"
+			(at 250.19 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "28799198-a79a-5dea-bc12-c964b5cc29e9")
+		)
+		(instances
+			(project "osstempo_led_carrier"
+				(path "/1bba9a2c-ff95-5ef0-84b5-743b50c7bef4"
+					(reference "PF2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(no_connect
+		(at 41.91 43.18)
+		(uuid "8c619d9e-e769-57a5-9172-d6f9cac4b1b8")
+	)
+	(no_connect
+		(at 41.91 48.26)
+		(uuid "689ec7a0-713a-5e2b-8532-6017f1c6c166")
+	)
+	(no_connect
+		(at 41.91 50.8)
+		(uuid "39fdc65f-eb05-5b98-b6aa-727bfd09aff7")
+	)
+	(no_connect
+		(at 41.91 53.34)
+		(uuid "66192d5c-f133-5163-8cb7-93dba53178e1")
+	)
+	(no_connect
+		(at 41.91 55.88)
+		(uuid "7ae24495-797f-5773-b393-8c07679e9d60")
+	)
+	(no_connect
+		(at 41.91 58.42)
+		(uuid "a8ef46bb-baa6-5694-be97-ebdd82e56cc0")
+	)
+	(no_connect
+		(at 67.31 44.45)
+		(uuid "e56ea893-193f-5780-8c2e-287f4b0e4865")
+	)
+	(no_connect
+		(at 67.31 46.99)
+		(uuid "58e1918f-5650-5cf3-9fb6-6b8a12a05fd5")
+	)
+	(no_connect
+		(at 67.31 49.53)
+		(uuid "b7dd71d9-07e2-5013-8792-78604b35f5a2")
+	)
+	(no_connect
+		(at 67.31 52.07)
+		(uuid "df8168e0-246f-578c-b85c-820f6a0bfd0e")
+	)
+	(no_connect
+		(at 67.31 54.61)
+		(uuid "47e9b16e-2cd2-5d61-a2e1-edf62e3b2b11")
+	)
+	(no_connect
+		(at 67.31 57.15)
+		(uuid "7ce17365-e643-5d7d-a1ab-a3ee09bed646")
+	)
+	(no_connect
+		(at 67.31 59.69)
+		(uuid "1b812bde-6a74-5cc8-87c5-f99f71529455")
+	)
+	(no_connect
+		(at 110.49 48.26)
+		(uuid "c2bd36d2-9672-57bd-aade-9145651dd14d")
+	)
+	(no_connect
+		(at 110.49 50.8)
+		(uuid "358d91b3-6ffb-5a23-8a6f-3ba6d79475af")
+	)
+	(no_connect
+		(at 110.49 53.34)
+		(uuid "73090131-b7ba-576c-a94b-5c426c5d8d57")
+	)
+	(no_connect
+		(at 110.49 55.88)
+		(uuid "df733996-231e-549e-8f69-6dc56860469d")
+	)
+	(no_connect
+		(at 110.49 58.42)
+		(uuid "456d5a46-37db-5f18-a163-ce367a1e24c8")
+	)
+	(no_connect
+		(at 110.49 60.96)
+		(uuid "4fe99c99-24f8-5b39-b946-b3fd2ea8313d")
+	)
+	(no_connect
+		(at 135.89 44.45)
+		(uuid "3e3b3468-25a1-55bb-913e-66a844d192fe")
+	)
+	(no_connect
+		(at 135.89 46.99)
+		(uuid "81465834-a2d8-5293-87d0-f4ee5a4e5e01")
+	)
+	(no_connect
+		(at 135.89 49.53)
+		(uuid "0492d346-243c-5d8b-9014-db4b94ba7f55")
+	)
+	(no_connect
+		(at 135.89 52.07)
+		(uuid "2741813a-31f6-599d-aa49-dfc6cef7cc79")
+	)
+	(no_connect
+		(at 135.89 54.61)
+		(uuid "792e4251-a400-5427-9873-309ef1976181")
+	)
+	(no_connect
+		(at 135.89 57.15)
+		(uuid "6197c9bc-7c8d-5da1-8622-222a6404f1cf")
+	)
+	(no_connect
+		(at 135.89 59.69)
+		(uuid "2a8a1117-fd18-5106-8616-3adf9f691276")
+	)
+	(wire
+		(pts
+			(xy 97.79 43.18) (xy 110.49 43.18)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4686eca0-2f8b-5bac-9152-a50b5c4d6a6d")
+	)
+	(wire
+		(pts
+			(xy 224.79 64.77) (xy 224.79 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a65826fc-d9c6-5378-9aa5-696cb1e6afdd")
+	)
+	(wire
+		(pts
+			(xy 224.79 64.77) (xy 237.49 63.5)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5a050cac-c945-5497-9d1b-601d8dcd1361")
+	)
+	(wire
+		(pts
+			(xy 224.79 95.25) (xy 250.19 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0fd81143-6116-5aca-918b-5788a182b708")
+	)
+	(wire
+		(pts
+			(xy 250.19 82.55) (xy 250.19 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6bd6ec9b-6d6b-5455-840d-89ff0049b97c")
+	)
+	(wire
+		(pts
+			(xy 250.19 95.25) (xy 256.54 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "151aef53-77c4-550c-9bdd-ae5081fa242f")
+	)
+	(wire
+		(pts
+			(xy 250.19 146.05) (xy 250.19 158.75)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "8bfb5d62-e8c1-593e-b206-66119651e20b")
+	)
+	(wire
+		(pts
+			(xy 250.19 146.05) (xy 256.54 146.05)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a529c3a1-4a22-58c6-83f5-b97b79d2f0cb")
+	)
+	(wire
+		(pts
+			(xy 256.54 95.25) (xy 256.54 146.05)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1ffbfd4a-cff5-59fd-94cc-f05e0d81c530")
+	)
+	(wire
+		(pts
+			(xy 256.54 95.25) (xy 318.77 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "edfb0102-d01a-5c2a-b707-b9020fba9e32")
+	)
+	(wire
+		(pts
+			(xy 318.77 43.18) (xy 318.77 55.88)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "07624934-ba80-56d8-ac9c-96915219ead9")
+	)
+	(wire
+		(pts
+			(xy 318.77 43.18) (xy 321.31 43.18)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ea201f53-915d-5390-a16f-69900ce23584")
+	)
+	(wire
+		(pts
+			(xy 318.77 95.25) (xy 318.77 107.95)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1e1afd42-a919-53a8-8ab1-da011348ef26")
+	)
+	(wire
+		(pts
+			(xy 318.77 95.25) (xy 321.31 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "baf0aca4-634f-5692-8630-9a18bcb13c00")
+	)
+	(wire
+		(pts
+			(xy 318.77 147.32) (xy 318.77 160.02)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "096d649c-695e-568e-b24f-d7b6db5eb6c7")
+	)
+	(wire
+		(pts
+			(xy 318.77 147.32) (xy 321.31 147.32)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "25b254b2-d7bb-5b23-a023-212d0587338b")
+	)
+	(wire
+		(pts
+			(xy 318.77 199.39) (xy 318.77 212.09)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0ff83e24-15d1-5dfd-bf21-b4a816298425")
+	)
+	(wire
+		(pts
+			(xy 318.77 199.39) (xy 321.31 199.39)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4b7fb0a9-2585-55ed-b9d9-4e2601cd8af5")
+	)
+	(wire
+		(pts
+			(xy 318.77 251.46) (xy 318.77 264.16)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c0e6ca43-506d-5aae-b32e-d3278947fc73")
+	)
+	(wire
+		(pts
+			(xy 318.77 251.46) (xy 321.31 251.46)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4b433302-0917-5ad6-a873-76f6e2fb516c")
+	)
+	(wire
+		(pts
+			(xy 321.31 43.18) (xy 321.31 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "afda09cc-b9dc-59ea-b956-850b5f38288b")
+	)
+	(wire
+		(pts
+			(xy 321.31 95.25) (xy 321.31 147.32)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a7523109-9f4c-58cc-91f9-18098fb4f492")
+	)
+	(wire
+		(pts
+			(xy 321.31 147.32) (xy 321.31 199.39)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "950791d9-b9df-52b1-9518-43ddef9c6d8d")
+	)
+	(wire
+		(pts
+			(xy 321.31 199.39) (xy 321.31 251.46)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4b2b4c88-cbde-5f57-bdbb-6df6d6f2e06b")
+	)
+	(wire
+		(pts
+			(xy 254 41.91) (xy 266.7 41.91)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "52aeae42-7046-5a31-b724-1cbe652c2226")
+	)
+	(wire
+		(pts
+			(xy 262.89 62.23) (xy 275.59 62.23)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "07919d76-38f8-549f-ba12-79afecea9f82")
+	)
+	(wire
+		(pts
+			(xy 266.7 41.91) (xy 275.59 41.91)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b38230d1-53bf-5da4-9ebd-97afa1a11f98")
+	)
+	(wire
+		(pts
+			(xy 275.59 41.91) (xy 275.59 62.23)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "29311cca-4faf-5be5-a664-cb2a0555e2ea")
+	)
+	(wire
+		(pts
+			(xy 29.21 55.88) (xy 41.91 60.96)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "cce16178-71e9-5cd8-80ef-a31b08ad6f63")
+	)
+	(wire
+		(pts
+			(xy 233.68 41.91) (xy 246.38 41.91)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6cce5d33-b107-5a14-babb-263b05e9681f")
+	)
+	(wire
+		(pts
+			(xy 29.21 40.64) (xy 29.21 52.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ffc93161-065b-50c3-9d24-b8837ba62c6b")
+	)
+	(wire
+		(pts
+			(xy 29.21 40.64) (xy 95.25 40.64)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b708cc1b-ab9b-56c8-bd24-fe0f6aeefbb8")
+	)
+	(wire
+		(pts
+			(xy 29.21 52.07) (xy 41.91 45.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a042e5bf-de2a-53ce-9f31-8b86edb4d635")
+	)
+	(wire
+		(pts
+			(xy 95.25 40.64) (xy 95.25 46.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c575b0dd-31d1-5ba7-ba8a-37eb20968167")
+	)
+	(wire
+		(pts
+			(xy 95.25 46.99) (xy 97.79 46.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e66bee75-80c6-5fc6-8f19-13b66cf5fb33")
+	)
+	(wire
+		(pts
+			(xy 97.79 46.99) (xy 110.49 45.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "df27630f-2d18-5b50-9c60-02dee84b5412")
+	)
+	(wire
+		(pts
+			(xy 222.25 60.96) (xy 222.25 125.73)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5f084291-d858-588f-8a80-a9fbf5dabab0")
+	)
+	(wire
+		(pts
+			(xy 222.25 60.96) (xy 224.79 60.96)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "45380b44-ecca-5178-aa85-228784a25338")
+	)
+	(wire
+		(pts
+			(xy 222.25 125.73) (xy 242.57 125.73)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0f32e14c-64cf-5872-a5c3-2cd8c1ac6a12")
+	)
+	(wire
+		(pts
+			(xy 224.79 54.61) (xy 224.79 60.96)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "716ee926-bffe-56e4-9e0b-92640158617c")
+	)
+	(wire
+		(pts
+			(xy 224.79 54.61) (xy 260.35 54.61)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3415cb28-d255-527c-b3eb-5f58c43c6cf3")
+	)
+	(wire
+		(pts
+			(xy 224.79 60.96) (xy 237.49 60.96)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ef26b2ca-e3df-55e0-9c10-d783fef87e4d")
+	)
+	(wire
+		(pts
+			(xy 242.57 125.73) (xy 242.57 179.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4665e7f7-227d-512c-aeb9-d38e23cb2075")
+	)
+	(wire
+		(pts
+			(xy 242.57 125.73) (xy 250.19 125.73)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a1777dc8-7e57-519e-b0fe-1d505ddeb086")
+	)
+	(wire
+		(pts
+			(xy 242.57 179.07) (xy 250.19 179.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "dc03eea5-d4e0-50d1-9171-19355a99fbe8")
+	)
+	(wire
+		(pts
+			(xy 250.19 113.03) (xy 250.19 125.73)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ff15b101-a0e2-529b-96ca-f79ece0c05f0")
+	)
+	(wire
+		(pts
+			(xy 250.19 166.37) (xy 250.19 179.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b7ee7e3c-a25c-5d49-9127-85519600e628")
+	)
+	(wire
+		(pts
+			(xy 250.19 179.07) (xy 318.77 179.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d2852b5a-cf0a-56f6-9b58-8554dbd21bce")
+	)
+	(wire
+		(pts
+			(xy 260.35 54.61) (xy 260.35 76.2)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7ee42f55-1f5d-5f9b-971f-7bfe43f5ad47")
+	)
+	(wire
+		(pts
+			(xy 260.35 76.2) (xy 318.77 76.2)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "434c2b19-9e22-5485-8a41-36b7a7f2db8a")
+	)
+	(wire
+		(pts
+			(xy 316.23 144.78) (xy 316.23 180.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "16958b7b-aed4-5980-a4b3-f46e3fd83d06")
+	)
+	(wire
+		(pts
+			(xy 316.23 144.78) (xy 320.04 144.78)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "cdb7e20d-d247-518b-a601-64991822236f")
+	)
+	(wire
+		(pts
+			(xy 316.23 180.34) (xy 318.77 180.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6d009391-3f73-51f5-a5b5-2de8001a223a")
+	)
+	(wire
+		(pts
+			(xy 316.23 196.85) (xy 316.23 232.41)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "776708fb-4a6f-5121-81b8-ea0f2aaf07d5")
+	)
+	(wire
+		(pts
+			(xy 316.23 196.85) (xy 320.04 196.85)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5bc7daff-66ac-53b5-b5e1-b77bb4a6bd58")
+	)
+	(wire
+		(pts
+			(xy 316.23 232.41) (xy 318.77 232.41)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c2bfe2da-0afe-5f26-9c69-a6850183ee08")
+	)
+	(wire
+		(pts
+			(xy 316.23 248.92) (xy 316.23 284.48)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c9d1ff55-64b8-5514-9d75-3955f9e6a484")
+	)
+	(wire
+		(pts
+			(xy 316.23 248.92) (xy 320.04 248.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "57dcf245-87c8-5b43-b498-25d3d16f7c04")
+	)
+	(wire
+		(pts
+			(xy 316.23 284.48) (xy 318.77 284.48)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "bdca4359-1dfd-56f5-943b-c5d80ebebb7b")
+	)
+	(wire
+		(pts
+			(xy 318.77 63.5) (xy 318.77 76.2)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "618e6230-f688-5f0e-a086-029e9d1eae1f")
+	)
+	(wire
+		(pts
+			(xy 318.77 115.57) (xy 318.77 128.27)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c8b50aba-6e8d-5bf1-946b-fd6aa645ec61")
+	)
+	(wire
+		(pts
+			(xy 318.77 128.27) (xy 320.04 128.27)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "99d5b25d-bdb1-59b1-9cd1-394b3412b909")
+	)
+	(wire
+		(pts
+			(xy 318.77 167.64) (xy 318.77 179.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b82493af-3e39-536d-8577-9a7530f0386e")
+	)
+	(wire
+		(pts
+			(xy 318.77 179.07) (xy 318.77 180.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2a5dad9c-eae8-5c3c-8e17-09bb869281ac")
+	)
+	(wire
+		(pts
+			(xy 318.77 180.34) (xy 320.04 180.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1a19d57e-5b35-54b8-a8eb-ba88a9ebe563")
+	)
+	(wire
+		(pts
+			(xy 318.77 219.71) (xy 318.77 232.41)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "74c817ef-5d8d-58d4-b032-1e6e486ad66a")
+	)
+	(wire
+		(pts
+			(xy 318.77 232.41) (xy 320.04 232.41)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a85ab864-d103-529b-85c3-01fc6f25906b")
+	)
+	(wire
+		(pts
+			(xy 318.77 271.78) (xy 318.77 284.48)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e20c3cc3-c096-509a-ae8b-b887b7c6b4b0")
+	)
+	(wire
+		(pts
+			(xy 320.04 128.27) (xy 320.04 144.78)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "17a426ea-4d48-54d7-be2a-6b451ea729ff")
+	)
+	(wire
+		(pts
+			(xy 320.04 180.34) (xy 320.04 196.85)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2d079a36-d7d1-54f3-8fa2-3bb3df7c80a1")
+	)
+	(wire
+		(pts
+			(xy 320.04 232.41) (xy 320.04 248.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b5eb1d1b-be6b-55ad-89f1-a25d9a8979fc")
+	)
+	(junction (at 224.79 60.96) (diameter 0) (color 0 0 0 0) (uuid "ec916c3d-7137-57e6-abef-7bd81c99d2b3"))
+	(junction (at 242.57 125.73) (diameter 0) (color 0 0 0 0) (uuid "a4cced98-3563-5db9-8a46-8941acaf5a3e"))
+	(junction (at 250.19 95.25) (diameter 0) (color 0 0 0 0) (uuid "c4fbfa7c-89ac-5beb-b2b3-e3389e7b71e9"))
+	(junction (at 250.19 179.07) (diameter 0) (color 0 0 0 0) (uuid "13b6f4b1-c2de-59b0-9d6b-921752f0610a"))
+	(junction (at 256.54 95.25) (diameter 0) (color 0 0 0 0) (uuid "fcd51dec-54a0-5dbb-91e1-ba52394dd9b5"))
+	(junction (at 318.77 95.25) (diameter 0) (color 0 0 0 0) (uuid "21352016-1ed5-56b4-bbd1-733000ff00d4"))
+	(junction (at 318.77 179.07) (diameter 0) (color 0 0 0 0) (uuid "e6823fad-3976-5a76-a2da-6f19d6fb2eaf"))
+	(junction (at 318.77 180.34) (diameter 0) (color 0 0 0 0) (uuid "9c58da34-5591-5f98-8b96-9e953440b661"))
+	(junction (at 318.77 232.41) (diameter 0) (color 0 0 0 0) (uuid "db07bc95-202b-5145-a9ad-c43ecb40ffcd"))
+	(junction (at 321.31 95.25) (diameter 0) (color 0 0 0 0) (uuid "71ea6998-069e-56d6-98f8-1315ff2bc3ba"))
+	(junction (at 321.31 147.32) (diameter 0) (color 0 0 0 0) (uuid "efd64cfa-c3e9-5872-a27a-71a364683cd5"))
+	(junction (at 321.31 199.39) (diameter 0) (color 0 0 0 0) (uuid "2bc065e4-d615-5215-937e-fde810001042"))
+	(global_label "GND"
+		(shape passive)
+		(fields_autoplaced yes)
+		(at 29.21 52.07 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "86f72662-1871-57eb-a8d7-150d56f333d6")
+	)
+	(global_label "ESP32_IO5"
+		(shape passive)
+		(fields_autoplaced yes)
+		(at 29.21 55.88 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "82585962-e812-55d0-90da-48c4153421d4")
+	)
+	(global_label "5V"
+		(shape passive)
+		(fields_autoplaced yes)
+		(at 97.79 43.18 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "157a6e33-b28f-5b21-b768-f6461eded57c")
+	)
+	(global_label "DIN"
+		(shape passive)
+		(fields_autoplaced yes)
+		(at 275.59 62.23 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7bb85e6e-1336-5e1c-9148-18d2bab47b87")
+	)
+	(global_label "ESP32_IO5"
+		(shape passive)
+		(fields_autoplaced yes)
+		(at 233.68 41.91 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "b7a5cf2b-1969-5bb2-855f-da959458ca34")
+	)
+	(global_label "5V"
+		(shape passive)
+		(fields_autoplaced yes)
+		(at 318.77 43.18 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c6eaf2f7-063d-5216-babc-08d7d0686efe")
+	)
+	(global_label "GND"
+		(shape passive)
+		(fields_autoplaced yes)
+		(at 318.77 76.2 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "9c0159c0-6d4a-547a-b01a-4fa8751385ea")
+	)
+	(embedded_fonts no)
+)

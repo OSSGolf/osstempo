@@ -1,0 +1,62 @@
+id: uni-royal-0805w8f4700t5e
+kind: component_identity
+manufacturer: UNI-ROYAL(Uniroyal Elec)
+mpn: 0805W8F4700T5E
+category: chip_resistor
+package: '0805'
+datasheets:
+- type: datasheet
+  title: UNI-ROYAL 0805W8F4700T5E product and datasheet listing
+  url: https://jlcpcb.com/partdetail/18398-0805W8F4700T5E/C17710
+  source_id: jlcpcb_c17710
+ratings:
+- id: power_dissipation
+  kind: power
+  value: 0.125
+  units: W
+  source_id: jlcpcb_c17710
+- id: max_working_voltage
+  kind: voltage
+  value: 150.0
+  units: V
+  source_id: jlcpcb_c17710
+asset_status:
+  symbol: resolved
+  footprint: resolved
+  model_3d: resolved
+  fabrication_ready: true
+assets:
+  symbol:
+    source_type: official-kicad
+    name: Device:R
+  footprint:
+    source_type: official-kicad
+    library: Resistor_SMD
+    name: R_0805_2012Metric
+    path: vendor_ecad/kicad_footprints/Resistor_SMD.pretty/R_0805_2012Metric.kicad_mod
+    provenance_id: official-kicad-footprints
+    sha256: f050b6a50cc7e6f86291fb7aa8f87b0d02255e21cfbddf291cdccc87e5889794
+  model_3d:
+    source_type: official-kicad
+    path: vendor_ecad/kicad_3dmodels/Resistor_SMD.3dshapes/R_0805_2012Metric.step
+    provenance_id: retained-3d-cache
+    board_model_ref: ${KIPRJMOD}/3dmodels/Resistor_SMD.3dshapes/R_0805_2012Metric.step
+    sha256: ded342cdb394fb45395227beaaa75cc390613cf2581b29cd6d22c12abd6103b2
+validation:
+  known_gaps: []
+policy:
+  no_fake_assets: true
+  notes: WS2812B data-line series resistor (GPIO5 -> strip DIN). 0805 chosen over
+    0603 for hand-rework headroom. JLCPCB Basic library part, so assembly incurs no
+    feeder fee.
+distributors:
+  jlcpcb:
+    match_status: exact_mpn
+    query: 0805W8F4700T5E
+    part_number: C17710
+    lcsc_id: C17710
+    manufacturer_part_number: 0805W8F4700T5E
+    manufacturer: UNI-ROYAL(Uniroyal Elec)
+    package: '0805'
+    product_url: https://jlcpcb.com/partdetail/18398-0805W8F4700T5E/C17710
+    last_checked: '2026-09-09'
