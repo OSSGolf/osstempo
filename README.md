@@ -26,6 +26,15 @@ Two ways to build it, same firmware and app. See [`docs/`](docs/):
   and one cap on a breadboard. Lowest cost.
 - [**docs/dig2go/**](docs/dig2go/) - pre-assembled [QuinLED-Dig2go]. Screw in three
   wires, flash, done.
+- [**pcb/**](pcb/README.md) - the ESP32 carrier PCB (v1.2): the dev board drops into two
+  sockets, JLCPCB places the passives, you hand-solder eleven marked pins. Renders, build
+  pipeline and the JLCPCB order files live there; [`pcb_build_spec.md`](pcb_build_spec.md)
+  is the board spec.
+
+<p align="center">
+  <img src="pcb/renders/v1.2-top.png" width="260" alt="carrier PCB v1.2, front">
+  <img src="pcb/renders/v1.2-bottom.png" width="260" alt="carrier PCB v1.2, back: solder arrows and golf-ball logo">
+</p>
 
 Each folder has a bill of materials, a wiring and flashing guide, and a pinned,
 ready-to-flash sketch. The sections below are the full hardware and firmware spec
