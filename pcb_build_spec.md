@@ -216,9 +216,9 @@ python3 pcb/tools/make_jlc_order.py      # -> pcb/build/jlcpcb_order/
 
 | File | Where it goes on jlcpcb.com |
 |---|---|
-| `osstempo_led_carrier-v1.1-gerbers.zip` | **Add gerber file** (top of the quote page) |
-| `osstempo_led_carrier-v1.1-bom.csv` | PCB Assembly step 2, **Add BOM file** |
-| `osstempo_led_carrier-v1.1-cpl.csv` | PCB Assembly step 2, **Add CPL file** |
+| `osstempo_led_carrier-v1.2-gerbers.zip` | **Add gerber file** (top of the quote page) |
+| `osstempo_led_carrier-v1.2-bom.csv` | PCB Assembly step 2, **Add BOM file** |
+| `osstempo_led_carrier-v1.2-cpl.csv` | PCB Assembly step 2, **Add CPL file** |
 
 The script verifies every file against the release's `fabrication_manifest.json` hashes before
 zipping, and the zip is byte-reproducible. It decides what JLC places from the board itself: a
