@@ -40,7 +40,7 @@ rules:
       pin: '2'
     b:
       net: ${gpio_net}
-    symbol: Resistor
+    part: resistor
     min_value: 300R
     max_value: 500R
     message: DIN needs a 300-500 ohm series resistor between the GPIO and the connector
@@ -53,7 +53,7 @@ rules:
       pin: '3'
     b:
       net: ${ground_net}
-    symbol: Capacitor
+    part: capacitor
     value: ${bulk_cap_value}
     count: 6
     message: Six 22 uF ceramics must sit across the strip supply at the connector

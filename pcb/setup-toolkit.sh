@@ -9,10 +9,10 @@
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 TK="$HERE/../../kicad-agent-toolkit"
-BRANCH=osstempo-patches
+BRANCH=osstempo-patches-v2
 [ -d "$TK" ] || { echo "clone georgemclaughlin/kicad-agent-toolkit next to this repo first"; exit 1; }
 
-echo "== toolkit branch ($BRANCH - four small fixes this board needs; see README.md)"
+echo "== toolkit branch ($BRANCH - upstream main plus the patches this board needs; see README.md)"
 if (cd "$TK" && git rev-parse --verify -q "$BRANCH" >/dev/null); then
   (cd "$TK" && [ "$(git branch --show-current)" = "$BRANCH" ] || git checkout -q "$BRANCH") && echo "   on $BRANCH"
 else

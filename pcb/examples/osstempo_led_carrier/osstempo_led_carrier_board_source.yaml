@@ -6,3 +6,6 @@ system_design:
   mode: not_target
 firmware:
   mode: retained_intent
+design_considerations:
+  mode: decisions
+  path: osstempo_led_carrier_design_considerations.yaml

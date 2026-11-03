@@ -1,0 +1,27 @@
+artifact_type: kicad-agent.design-consideration-decisions
+schema_version: 1
+decisions:
+  - id: connector_edge_overhang
+    decision: declined
+    reason: There is no enclosure. The carrier sits open in the LED channel assembly; the JST XH
+      LED connector is centred on the bottom edge with its mouth facing out so the Dig2go
+      XH-to-SM cable plugs in, and its pads stay 10 mm inboard for hand soldering.
+  - id: connector_esd
+    decision: declined
+    reason: The only external connector carries 5 V and the WS2812B data line to the strip
+      through a keyed, latched JST XH; nobody touches its pins in use. The ESP32 dev board's
+      USB has its own protection, and the 470 ohm series resistor is the data line's only
+      conditioning, as on the breadboard build.
+  - id: firmware_status_led
+    decision: declined
+    reason: The product is a 144-pixel addressable strip driven by this board; it is the
+      status indicator. The dev board's own LED covers bring-up before the strip is attached.
+  - id: hand_assembly_packages
+    decision: accepted
+    reason: JLCPCB places the seven 0805 passives. The hand-soldered parts are two 2.54 mm
+      15-way sockets and a 2.5 mm JST XH, on 2.0 mm round pads with no copper pour, checked
+      by the tht_hand_solder_heat layout check.
+  - id: recovery_access
+    decision: accepted
+    reason: The ESP32 dev board plugs into sockets and keeps its own EN and BOOT buttons and
+      micro-USB; every one of its 30 pins is reachable on the socket tails for probing.

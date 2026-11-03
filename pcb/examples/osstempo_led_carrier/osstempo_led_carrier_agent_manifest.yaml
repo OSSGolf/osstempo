@@ -46,7 +46,7 @@ board:
     size: [50.0, 70.0]
     # 3 mm corners: no snag, protects the corner holes (4.5 mm inset, 3.2 mm drill -
     # the arc never reaches them). JLCPCB routes outer corners at any radius.
-    corner_radius: 3.0
+    corner_radius_mm: 3.0
   generate_footprints: true
   autoroute:
     enabled: false

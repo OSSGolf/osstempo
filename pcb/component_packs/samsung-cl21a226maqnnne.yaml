@@ -9,12 +9,24 @@ datasheets:
   title: Samsung CL21A226MAQNNNE product and datasheet listing
   url: https://jlcpcb.com/partdetail/C45783
   source_id: jlcpcb_c45783
+  path: vendor_ecad/datasheets/jlcpcb_c45783/source.pdf
+  sha256: 96baebe4bd0ce363e87be28b5b003f511f1502e084a6fc4f02333ded56c808f6
+  provenance_id: retained-vendor-documents
+passive:
+  kind: capacitor
+  capacitance_farads: 2.2e-05
+  tolerance_percent: 20.0
+  source_id: jlcpcb_c45783
+  source_locator: 'Part number code CL21A226MAQNNNE on the ordering-code page (CL 21 A 226 M A ...): 226 = 22 uF, tolerance code M = +/-20 %, dielectric code A = X5R, rated voltage code A = 25 V; temperature characteristics table: X5R operating temperature -55 to +85 C'
 ratings:
 - id: rated_voltage
   kind: voltage
   value: 25.0
   units: V
   source_id: jlcpcb_c45783
+  source_locator: 'Part number code CL21A226MAQNNNE on the ordering-code page (CL 21 A 226 M A ...): 226 = 22 uF, tolerance code M = +/-20 %, dielectric code A = X5R, rated voltage code A = 25 V; temperature characteristics table: X5R operating temperature -55 to +85 C'
+  temperature_min_c: -55.0
+  temperature_max_c: 85.0
 asset_status:
   symbol: resolved
   footprint: resolved

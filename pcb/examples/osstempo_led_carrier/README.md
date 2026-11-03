@@ -76,11 +76,11 @@ Topology:
 
 ### Things the toolkit needed patching for
 
-See [`../../README.md`](../../README.md). Patch 0001 filled an authored-copper board's zones
-(v1.0's ground plane; v1.1 has no zones, so it no longer matters here). Without patch 0002,
-there is no way to put a logo on a board. Patch 0004 (v1.2) adds `pcb_no_reference_label`, which drops
-the toolkit's assembly designators, so the branded back and the bare front print no `Cn`/`Rn`/`Hn`.
-All are applied by `setup-toolkit.sh`.
+See [`../../README.md`](../../README.md) for the `osstempo-patches-v2` branch. The zone-fill
+patch mattered for v1.0's ground plane (v1.1 and later have no zones). `board.artwork` is how the
+golf ball gets on the board, `pcb_no_reference_label` is why the branded back and the bare front
+print no `Cn`/`Rn`/`Hn`, and `tht_hand_solder_heat` is the hand-soldering check in
+`layout/osstempo_led_carrier_layout_quality.yaml`. `setup-toolkit.sh` checks the branch out.
 
 ### Scoped out, and why
 

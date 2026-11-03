@@ -353,7 +353,8 @@ JLC's library orientation cannot disagree with ours the way it does for ICs and 
 ## Verification status (v1.1)
 
 Full toolkit gate stack green and an **immutable fabrication release promoted** (built with the
-`osstempo-patches` toolkit branch that also built v1.0, on KiCad 10.0.8):
+`osstempo-patches` toolkit branch that also built v1.0, on KiCad 10.0.8; that branch is
+since retired for `osstempo-patches-v2`, which rebuilds it with identical copper):
 ERC 0 items; DRC 0 items at all severities (toolkit, KiBot-in-container, and an independent
 `kicad-cli` run on the saved release); the WS2812B output rule pack (six 22 uF at the connector,
 series R, pinout) PASS; SPICE PASS; EMC/layout/asset/inventory evidence 9/9; pinned-KiBot
@@ -399,9 +400,10 @@ plane path exists on v1.1 (no pours at all), and the build steps pull the ESP32 
 tacking. Until the model is calibrated against this, treat its v1.0 column as optimistic and the
 field result as the authority.
 
-The current board runs this check from the newer toolkit line against the built release; it is
-not yet declared in `layout/osstempo_led_carrier_layout_quality.yaml` because the
-`osstempo-patches` branch that builds the board predates it.
+The check is declared in `layout/osstempo_led_carrier_layout_quality.yaml` as
+`hand_soldered_pins_wet_at_340c` (H1, H2, J1; Sn63Pb37; 340 C tip; 3 s; 50 W iron) and runs
+in every validate now that the board builds on the `osstempo-patches-v2` toolkit branch, which
+carries the model.
 
 **Nothing is outstanding.** The LED connector is confirmed JST XH (the Dig2go cable is a
 3-pin JST XH female to 3-pin JST SM male adapter, 20 AWG red/white/black = 5V/DIN/GND), and the
@@ -412,9 +414,10 @@ socket mapping is verified against the dev board's pinout and the working breadb
 The board is authored with the [kicad-agent-toolkit](https://github.com/georgemclaughlin/kicad-agent-toolkit),
 a **private** repo checked out at `../kicad-agent-toolkit` (a sibling of this repo). Nothing
 from it is vendored into osstempo; `pcb/README.md` documents the boundary, the setup script,
-and the `osstempo-patches` toolkit branch (four small fixes: zone fill with autorouting
-off, `board.artwork` for the logo, `outline.corner_radius`, and `pcb_no_reference_label` dropping
-the toolkit's own assembly designators - v1.2 prints none for H1/H2, R1 and C1-C6).
+and the `osstempo-patches-v2` toolkit branch (upstream main plus the patches this board needs:
+zone fill with autorouting off, `board.artwork` for the logo, mounting-hole `hide_reference`,
+`pcb_no_reference_label` dropping the toolkit's own assembly designators - v1.2 prints none for
+H1/H2, R1 and C1-C6 - zone thermal reliefs, and the `tht_hand_solder_heat` check).
 
 - Fab profile: **`jlcpcb_2layer_basic`** (ships with the toolkit; matches this order exactly).
 - **Autorouting is disabled** - it does not work on macOS. The toolkit re-executes its own source

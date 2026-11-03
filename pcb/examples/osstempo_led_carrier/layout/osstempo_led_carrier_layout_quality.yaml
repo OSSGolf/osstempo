@@ -49,3 +49,16 @@ checks:
   enforce: true
   max_length_mm: 6
   max_ratio: 1.05
+# The sockets and the LED connector are hand-soldered. v1.0 tied the ground pins
+# straight into a plane and no pad would wet below a heat gun; this check reads the
+# copper around every through-hole pad and fails any joint a 340 C iron cannot wet
+# in 3 s. The model under-predicts a solid plane (see the toolkit's
+# hand-solder-heat reference), so a "marginal" advisory here is a defect, not a note.
+- id: hand_soldered_pins_wet_at_340c
+  type: tht_hand_solder_heat
+  title: Every socket and LED-connector pin wets at a 340 C tip within 3 s
+  refs: [H1, H2, J1]
+  solder_alloy: sn63pb37
+  tip_temperature_c: 340
+  max_time_s: 3
+  iron_power_w: 50

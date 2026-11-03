@@ -47,22 +47,45 @@ The toolkit only discovers boards under its own `examples/`, but `KICAD_AGENT_PR
 repoints it at an arbitrary board root — which is what `env.sh` does. An out-of-tree root
 reproduces byte-identical results to running inside the toolkit repo.
 
-### Toolkit branch `osstempo-patches`
+### Toolkit branch `osstempo-patches-v2`
 
-Four small fixes this board needs live on a local branch of the toolkit clone
-(`setup-toolkit.sh` checks it out). They are general and belong upstream as PRs:
+The board builds on a local branch of the toolkit clone: upstream `main` (fetched 2026-11-03)
+plus the patches this board needs, each with tests and a docs page (`setup-toolkit.sh`
+checks it out). They are general and belong upstream as PRs:
 
 1. **Fill zones when autoroute is disabled.** With `autoroute.enabled: false` (the only
-   option on macOS, below) the pipeline returned before any zone fill, so the saved board —
-   and the gerbers — had zone outlines with no ground plane.
-2. **`board.artwork`** — place a pad-less silkscreen footprint (the logo) without a
-   reference label; plus `hide_reference` on mounting holes to drop the `MHn` labels.
-3. **`outline.corner_radius`** for `shape: rect` — four edges plus four true `gr_arc`s.
-4. **`pcb_no_reference_label`** on a component (v1.2, uncommitted on the worktree at
-   `../kicad-agent-toolkit-v1`): no designator on the board at all. The toolkit draws its own
-   `Cn`/`Rn`/`Hn` silkscreen label for every placed part (`pcb_hide_reference` only hides the
-   footprint's built-in one, and the toolkit's tests rely on that meaning). A branded board with
-   machine-placed passives wants neither - JLC places from the CPL, not the silkscreen.
+   option on macOS, below) the pipeline returned before any zone fill, so the saved board -
+   and the gerbers - had zone outlines with no ground plane. Moot for v1.2 (no zones), still
+   true upstream.
+2. **`board.artwork`** - place a pad-less silkscreen footprint (the golf ball) without a
+   reference label. Upstream's own `board.silkscreen_artwork` wants polygons inline in the
+   manifest; a 143-outline TrueType rendering belongs in a footprint file.
+3. **`mounting_holes[].hide_reference`** - drop the `MHn` labels.
+4. **`pcb_no_reference_label`** on a component: no designator on the board at all. The
+   toolkit draws its own `Cn`/`Rn`/`Hn` silkscreen label for every placed part
+   (`pcb_hide_reference` only hides the footprint's built-in one, and the toolkit's tests rely
+   on that meaning). A branded board with machine-placed passives wants neither - JLC places
+   from the CPL, not the silkscreen.
+5. **`board.zones[].pad_connection`** - thermal reliefs (`thru_hole_only`) for any future
+   board that keeps a pour and still hand-solders its through-hole pins.
+6. **`tht_hand_solder_heat`** layout-quality check - the hand-soldering heat model
+   (`docs/framework/evidence/hand-solder-heat.md` in the toolkit). Declared in this board's
+   `layout/osstempo_led_carrier_layout_quality.yaml`.
+
+Retired: the `outline.corner_radius` patch. Upstream has `corner_radius_mm` since October;
+it draws each corner as eight short edge segments where the patch drew one true arc, which is
+the only difference between the ordered v1.2 gerbers and a rebuild on this branch.
+
+The previous branch `osstempo-patches` (September upstream base) built the ordered v1.0 to
+v1.2 releases and has been deleted; the zip committed in `build/jlcpcb_order/` is the one
+uploaded to JLCPCB, and a rebuild on this branch reproduces it except for the Edge_Cuts
+corners (`build.sh` rewrites the zip, so restore it from git after a rebuild unless the board
+changed). Upstream moved under it in ways this board had to follow: the board source must record
+[design-consideration decisions](examples/osstempo_led_carrier/osstempo_led_carrier_design_considerations.yaml),
+every passive needs sourced nominal facts and ratings bound to a retained, hash-bound
+datasheet under `vendor_ecad/datasheets/`, and rule-pack passive checks name a `part` kind
+instead of a symbol. The `board considerations` report command still expects the toolkit's
+block catalogue under the board root and does not run out-of-tree; validation does.
 
 ## Layout
 
@@ -80,6 +103,7 @@ pcb/
   component_packs/           our exact-part records (LCSC ids, footprint/model digests) + rule pack
   vendor_ecad/               only the official KiCad symbols/footprints/3D models the board uses,
                              plus our generated footprints; provenance in each README
+  vendor_ecad/datasheets/    retained, hash-bound datasheets the component packs cite
   tools/make_logo_footprint.py    silkscreen artwork (spec JSON + fonts) -> polygon footprint
   tools/make_socket_footprint.py  official 15-way socket -> the 2.0 mm-pad copy for hand soldering
   tools/make_jlc_order.py         promoted release -> the JLCPCB upload set (zip + BOM + CPL)
@@ -130,7 +154,7 @@ directly** - its parser stalls at ~96% on them. Two things are wrong and both ne
 
 1. The reproducibility pass normalises every `CreationDate` to the literal string `<normalized>`
    in the *shipped artifacts*, not just in the hash input, leaving an invalid X2 header. This
-   belongs upstream as a fourth PR alongside the `osstempo-patches` fixes: normalise for hashing,
+   belongs upstream as a PR alongside the `osstempo-patches-v2` patches: normalise for hashing,
    emit a real date.
 2. JLCPCB does not digest the X2 attributes or the `.gbrjob` at all, so the script strips both by
    default (gerbers only - the drill's X2 comments carry the NPTH marking). `--x2` keeps them. The quote-page and assembly settings are tabulated in

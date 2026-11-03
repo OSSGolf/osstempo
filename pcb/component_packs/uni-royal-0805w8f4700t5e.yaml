@@ -6,20 +6,35 @@ category: chip_resistor
 package: '0805'
 datasheets:
 - type: datasheet
-  title: UNI-ROYAL 0805W8F4700T5E product and datasheet listing
+  title: UNI-ROYAL 0805W8F4700T5E thick film chip resistor series datasheet (01005 to 2512), LCSC copy for C17710
   url: https://jlcpcb.com/partdetail/18398-0805W8F4700T5E/C17710
   source_id: jlcpcb_c17710
+  path: vendor_ecad/datasheets/jlcpcb_c17710/source.pdf
+  sha256: 11cd644d5d8a34a6d12775afb80bf58d8fc11f0c3b700dbd0f7a59942ceaa5ef
+  provenance_id: retained-vendor-documents
+passive:
+  kind: resistor
+  resistance_ohms: 470.0
+  tolerance_percent: 1.0
+  source_id: jlcpcb_c17710
+  source_locator: 'Section 2 Explanation of Part No. System, page 2: codes 1-4 0805 = size, 5-6 W8 = 1/8 W power rating, 7 F = +/-1 % tolerance, 8-11 4700 = 470 ohm (three significant figures 470, multiplier 0, the <=2 % series), 12-14 T5E = packaging'
 ratings:
 - id: power_dissipation
   kind: power
   value: 0.125
   units: W
   source_id: jlcpcb_c17710
+  source_locator: 'Page 5, ratings table: 0805 power rating 1/8 W; continuous load at -55 to 70 C ambient, derated above 70 C'
+  temperature_min_c: -55.0
+  temperature_max_c: 70.0
 - id: max_working_voltage
   kind: voltage
   value: 150.0
   units: V
   source_id: jlcpcb_c17710
+  source_locator: 'Page 5, ratings table: 0805 maximum working voltage 150 V DC, operating temperature -55 to 155 C'
+  temperature_min_c: -55.0
+  temperature_max_c: 155.0
 asset_status:
   symbol: resolved
   footprint: resolved
@@ -48,7 +63,8 @@ policy:
   no_fake_assets: true
   notes: WS2812B data-line series resistor (GPIO5 -> strip DIN). 0805 chosen over
     0603 for hand-rework headroom. JLCPCB Basic library part, so assembly incurs no
-    feeder fee.
+    feeder fee. UNI-ROYAL publishes one series datasheet for every size, retained from LCSC's copy
+    for C17710 and bound by hash; its part-number system (page 2) decodes this MPN.
 distributors:
   jlcpcb:
     match_status: exact_mpn

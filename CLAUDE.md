@@ -32,8 +32,10 @@ arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnin
 ## PCB (`pcb/`)
 - Build with **`sh pcb/build.sh`** only. It runs validate twice, reseeds `pcb/routed/`, writes the
   JLC order files, and **stops the Podman VM on exit** (idle it holds 2 cores + 4 GB). Never leave
-  the VM running after a build. The board builds with the `osstempo-patches` toolkit branch
-  (worktree `~/workspace/kicad-agent-toolkit-v1`; set `KICAD_AGENT` to its venv before `build.sh`).
+  the VM running after a build. The board builds with the `osstempo-patches-v2` toolkit branch
+  (upstream main + our patches) checked out in `~/workspace/kicad-agent-toolkit`, which is what
+  `pcb/env.sh` points at by default. The older `osstempo-patches` branch that built the ordered
+  v1.2 is deleted; a rebuild differs from the ordered gerbers only in Edge_Cuts corner segments.
 - Silkscreen artwork: `pcb/examples/osstempo_led_carrier/artwork/silk_back_v1_2.json` ->
   `pcb/tools/make_logo_footprint.py --spec ... --board <built .kicad_pcb>`; the generator refuses
   missing fonts and reads pad/via/hole keepouts from the board. Trust the 2D plot, not the 3D
