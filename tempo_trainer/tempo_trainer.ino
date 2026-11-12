@@ -49,8 +49,8 @@
 // as a compile flag). NOTE: the single-file copies under docs/ are DEPRECATED SNAPSHOTS -- they
 // predate the sync module and the flip, and are not kept in step with this sketch.
 #if !defined(BOARD_DIG2GO) && !defined(BOARD_DIY_ESP32)
-  #define BOARD_DIG2GO           // QuinLED-Dig2go pre-assembled (the board this repo runs on now)
-  //#define BOARD_DIY_ESP32      // generic ESP32 dev board + 470ohm + ceramic bulk (see pcb_build_spec.md)
+  #define BOARD_DIY_ESP32        // generic ESP32 dev board / carrier PCB + 470ohm + ceramic bulk (the default; see pcb_build_spec.md)
+  //#define BOARD_DIG2GO         // QuinLED-Dig2go pre-assembled: GPIO16 data + GPIO12 LED-power relay
 #endif
 
 // ---------- LED config (per board) ----------

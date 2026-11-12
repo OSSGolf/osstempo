@@ -10,12 +10,21 @@ controlled over BLE. See `README.md` for the full hardware/firmware/physics spec
 - **iOS app lives in the separate [osstempo-ios repo](https://github.com/OSSGolf/osstempo-ios)** — checked out locally at `~/Documents/workspace/OSSTempo` (NOT alongside this repo). Native SwiftUI + CoreBluetooth controller, dev-only (no App Store). **Implemented** (Swift 6, 4-layer: Domain/BLE/App/UI, pure reducer + `@Observable` shell); talks to the same BLE GATT. See its `DESIGN.md` + `README.md`. Build/test via **`Tools/test.sh`** in that repo — a plain `xcodebuild test` leaks ~20-50 MB of simulator data per run and the wrapper caps it. It uses the **iPhone 17** simulator (iPhone 16 isn't installed for iOS 26.5) with `-parallel-testing-enabled NO`.
 
 ## Firmware build (verified)
-`arduino-cli` is installed. Compile-check after any firmware edit:
+`arduino-cli` is installed. Build and flash through **`tools/flash.sh`**, not bare `arduino-cli`.
+Compile-check after any firmware edit:
 
 ```
-arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnings all tempo_trainer
+sh tools/flash.sh --compile-only            # default build: generic ESP32 (BOARD_DIY_ESP32)
+sh tools/flash.sh --compile-only --dig2go   # the Dig2go build must keep compiling too
+sh tools/flash.sh                           # compile + flash the one ESP32 plugged in
+sh tools/flash.sh --loop                    # flash a batch, swapping boards between prompts
 ```
 
+- **Why the wrapper:** arduino-cli's bundled `ctags` is Intel-only and this Mac has no Rosetta, so a
+  bare `arduino-cli compile` dies with `ctags: bad CPU type in executable`. The script builds a
+  native ctags once into `~/.cache/osstempo/` and passes it as `tools.ctags.cmd.path`.
+- **Default board is the generic ESP32** (GPIO5 data). The Dig2go (GPIO16 + GPIO12 relay) needs
+  `--dig2go`; the wrong build boots and advertises but leaves the strip dark.
 - Board: **ESP32 Dev Module**, Partition: **Huge APP (3MB No OTA)** — BLE+FastLED overflow the default partition.
 - ESP32 core 3.3.10 (v3.x) + FastLED already installed.
 - Arduino auto-generates prototypes at the top of the .ino, so **types used in function

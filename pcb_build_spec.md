@@ -332,14 +332,14 @@ JLC's library orientation cannot disagree with ours the way it does for ICs and 
    wrong. Sanity check once: with `▲ USB` at the top, the red wire should sit on the right pin.
 5. ESP32 in, cable off: confirm 5 V on J1.3 (right pin, `▲ USB` at the top). Then plug in.
 6. Power via the ESP32 USB from a **>= 1 A supply** (BLE + ESP-NOW + strip can peak near 500 mA),
-   flash the firmware **with the correct board flag** (below), pair over BLE.
+   flash the firmware (**default build, no board flag**; see below), pair over BLE.
 
 ## Firmware cross-reference
 
-- **Build with `-DBOARD_DIY_ESP32`.** The sketch defaults to `BOARD_DIG2GO`
-  (`tempo_trainer.ino:52`), which drives **`LED_PIN 16`**, not GPIO5. Flashing the default onto
-  this board leaves the strip **dark**, and it looks exactly like a solder or level-shifter fault.
-  Either pass the flag or uncomment `#define BOARD_DIY_ESP32` in the sketch.
+- **Build the default: `sh tools/flash.sh`.** The sketch defaults to `BOARD_DIY_ESP32`
+  (`tempo_trainer.ino:52`), which is this board, so no flag is needed. Do **not** pass
+  `--dig2go` / `-DBOARD_DIG2GO`: that build drives **`LED_PIN 16`**, not GPIO5, and leaves the
+  strip **dark**, which looks exactly like a solder or level-shifter fault.
 - Data pin under that flag: **GPIO5** (`LED_PIN 5`, `tempo_trainer.ino:61`).
 - Strip: WS2812B, 144 LEDs (`NUM_LEDS 144`).
 - No LED power relay on this board: `BOARD_DIY_ESP32` defines no `LED_POWER_PIN`, and the strip

@@ -96,6 +96,11 @@ The board appears as a serial port (`/dev/cu.usbserial-*` or
 - **Board target:** "ESP32 Dev Module."
 - **Partition scheme:** **"Huge APP (3MB No OTA/1MB SPIFFS)"** — BLE + FastLED
   exceed the default app partition.
+- **Build + flash:** `sh tools/flash.sh` compiles and flashes the one ESP32 that is
+  plugged in; `sh tools/flash.sh --loop` flashes a batch, prompting you to swap boards.
+  The default build is the generic ESP32 (GPIO5 data); add `--dig2go` for the
+  QuinLED-Dig2go. The script also works around arduino-cli's Intel-only `ctags` on
+  Apple-silicon Macs without Rosetta (`ctags: bad CPU type in executable`).
 - **Upload:** micro-USB, 115200 baud. Hold **BOOT** if upload stalls at
   `Connecting...`. The sketch boots straight into the continuous loop (no BLE
   needed to run); BLE is only for customization.
@@ -308,10 +313,14 @@ node web/check_flip_mapping.js
 Compile gate, **both** boards (they must both build; the flip touches no board-conditional code):
 
 ```
-arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnings all tempo_trainer
-arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnings all \
-  --build-property "compiler.cpp.extra_flags=-DBOARD_DIY_ESP32" tempo_trainer
+sh tools/flash.sh --compile-only
+sh tools/flash.sh --compile-only --dig2go
 ```
+
+The first line is the default build, the generic ESP32 (`BOARD_DIY_ESP32`, GPIO5 data). The
+Dig2go build passes `-DBOARD_DIG2GO` (GPIO16 data plus the GPIO12 power relay); the default
+build flashed onto a Dig2go leaves the strip dark. `tools/flash.sh` wraps
+`arduino-cli compile --fqbn "esp32:esp32:esp32:PartitionScheme=huge_app" --warnings all`.
 
 ### Bench checklist for the flip (not yet run)
 
