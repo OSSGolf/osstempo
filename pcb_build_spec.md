@@ -368,42 +368,46 @@ all of that and changes only the copper. The v1.0 order files are archived in
 
 ## Hand-soldering heat check
 
-The toolkit's `tht_hand_solder_heat` check (kicad-agent-toolkit, `evidence/solder_heat.py`;
-reviewed PASS by an independent EE/thermal review) simulates a 50 W station at 340 C on every
-through-hole pin, using the real copper around it, and reports the lowest tip temperature that
-gets the joint to wetting temperature (liquidus + 35 C, 218 C for 63/37) within 3 s.
+The toolkit's `tht_hand_solder_heat` check (kicad-agent-toolkit, `evidence/solder_heat.py`)
+simulates a 50 W station on every through-hole pin, using the real copper around it, and
+reports the lowest tip temperature that gets the joint to wetting temperature (liquidus + 35 C,
+218 C for 63/37) within the declared dwell. This board declares the process it is actually
+built with: a **380 C tip and a 10 s budget** (`hand_soldered_pins_wet_at_380c` in
+`layout/osstempo_led_carrier_layout_quality.yaml`; H1, H2, J1; Sn63Pb37; 50 W iron).
 
-| Pin | v1.0 needs | v1.1 needs |
-|---|---|---|
-| J1.1 LED GND | **345 C - fails at 340** (solid into planes, both layers) | 238 C |
-| H1.2 / H2.2 ESP32 GND | 330 / 329 C - marginal (solid into planes) | 236 C |
-| H2.1 / J1.3 5V | 247 / 246 C | 239 / 237 C |
-| Data and the 26 unused socket pins | 232-240 C (model; field: unsolderable without heat gun) | 232-235 C |
+**Two field results, from the person who built both boards.**
 
-Every v1.1 pin has >= 101 C of margin at a 340 C tip. Times are heating-only (the model assumes
-solder already bridges tip, pin and pad), so the *required tip temperature* is the robust figure.
-**v1.0 field result (fact, from the person who built it):** every pin, signal pins included,
-could not be soldered with an iron at 350-420 C. Solder melted on the header pin but the pad never
-got hot enough to wet, and joints never went shiny. The pads only wetted after the whole board was
-pre-heated with a heat gun. The builder is an experienced solderer, the tip was clean and
-tinned, and the same technique works on other boards. This was a heat-sinking failure of the
-v1.0 board, not flux or technique.
+- **v1.0** (solid GND planes on both layers, soldered straight to the GND pins, 1.7 mm lands):
+  every pin, signal pins included, could not be soldered with an iron at 350-420 C. Solder
+  melted on the header pin but the pad never got hot enough to wet, and joints never went
+  shiny. The pads only wetted after the whole board was pre-heated with a heat gun. The builder
+  is an experienced solderer, the tip was clean and tinned, and the same technique works on
+  other boards. This was a heat-sinking failure of the v1.0 board, not flux or technique.
+- **v1.2** (no pours, one trace per pin, 2.0 mm lands): every pin wetted in about 8 s at
+  380 C, and the board was very easy to solder compared with v1.0.
 
-**The model under-predicts v1.0.** As drawn, the check says only the three GND pins were
-heat-sunk and the signal pins needed ~240 C. That contradicts the field result, so the model is
-missing a heat path. Matching what was seen takes an extra ~0.1 W/K of heat drain on every pin
-(with it, v1.0 signal pins need ~380-390 C and the GND pins are unsolderable). Likely sources,
-not yet confirmed: the GND planes on *both* layers surrounded every pad at only 0.25-0.3 mm, so a
-large tip resting on the pad also rests on plane copper under thin solder mask and dumps its
-heat into the planes; and the plugged-in ESP32 plus socket contacts draining each pin. Neither
-plane path exists on v1.1 (no pours at all), and the build steps pull the ESP32 out after
-tacking. Until the model is calibrated against this, treat its v1.0 column as optimistic and the
-field result as the authority.
+**The model is calibrated to those two results.** Its one free parameter, the tip-to-joint
+contact conductance, was a textbook wetted-contact figure (0.15 W/K) that put v1.2 at a
+quarter of a second per pin and v1.0's signal pins at 240 C, both wrong by an order of
+magnitude. A dwell-averaged 0.015 W/K reproduces the 8 s on v1.2's worst pin and makes every
+plane-tied and 5V pin of v1.0 unreachable at any set point. v1.0's signal pins come out at
+about 370 C with the sockets empty and unreachable with the ESP32 plugged in; whether it was
+plugged in for v1.0 was not recorded. One dwell measurement fixes the time axis to within a
+factor of about 1.5, so read the margins as relative. The ranking between pins, and between
+the two boards, is the robust output.
 
-The check is declared in `layout/osstempo_led_carrier_layout_quality.yaml` as
-`hand_soldered_pins_wet_at_340c` (H1, H2, J1; Sn63Pb37; 340 C tip; 3 s; 50 W iron) and runs
-in every validate now that the board builds on the `osstempo-patches-v2` toolkit branch, which
-carries the model.
+| Pin | v1.0 needs (10 s budget) | v1.2 needs (10 s budget) | v1.2 heating time at 380 C |
+|---|---|---|---|
+| J1.1 LED GND | **never wets** (solid into planes, both layers) | 337 C | 4.5 s |
+| H1.2 / H2.2 ESP32 GND | **never wets** (solid into planes) | 343 / 347 C | 5.1 / 5.2 s |
+| H2.1 5V (worst v1.2 pin) | **432 C - fails at any setting used** | 365 C (15 C margin) | 7.5 s |
+| J1.3 5V | - | 332 C | 3.9 s |
+| H1.8 data, J1.2 DIN, unused socket pins | ~370 C with sockets empty; never with the ESP32 in | 321-322 C | 3.2-4.0 s |
+
+Every v1.2 pin wets inside the budget at 380 C. H2.1 is the pin to watch: it is where the
+1.3 mm 5V trunk leaves the socket (necked to 0.6 mm at the pad), and the check names it as
+within 30 C of the tip. That is consistent with the bench, where about 8 s was the dwell per
+pad, and it is a note in the check's message rather than a blocker.
 
 **Nothing is outstanding.** The LED connector is confirmed JST XH (the Dig2go cable is a
 3-pin JST XH female to 3-pin JST SM male adapter, 20 AWG red/white/black = 5V/DIN/GND), and the
