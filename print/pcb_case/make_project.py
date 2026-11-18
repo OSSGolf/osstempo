@@ -1,6 +1,7 @@
-"""Put case_base.stl and case_lid.stl on one A1 mini plate as a Bambu Studio project, print settings embedded.
+"""Put the case's four parts (base, lid, golf-ball badge, nameplate) on one A1 mini plate as a Bambu Studio project, print settings embedded.
     python3 print/pcb_case/make_project.py
-Run build.py first. The lid STL is already roof-down, so its logos print on the bed face."""
+Run build.py first. The lid STL is already roof-down; the badge and nameplate print face-up, which is
+where their fine detail needs to be. For a second colour, move those two to their own plate."""
 import os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,18 +23,28 @@ SETTINGS = {
 }
 
 objects, sizes = [], []
-for name in ("case_base", "case_lid"):
+for name in ("case_base", "case_lid", "case_badge", "case_plate"):
     verts, tris = make_3mf.read_stl(os.path.join(HERE, name + ".stl"))
     lo = [min(v[i] for v in verts) for i in range(3)]
     hi = [max(v[i] for v in verts) for i in range(3)]
     objects.append((name, verts, tris)); sizes.append((lo, hi))
 
-width = sum(hi[0] - lo[0] for lo, hi in sizes) + SPACE
-assert width <= BED - 10, f"parts are {width:.1f} mm side by side"
-items, x = [], (BED - width) / 2
-for k, (lo, hi) in enumerate(sizes):
-    items.append((k, make_3mf.translate(x - lo[0], BED / 2 - (lo[1] + hi[1]) / 2, -lo[2])))
-    x += hi[0] - lo[0] + SPACE
+# Two rows: base and lid side by side, the two flat inserts in front of them.
+rows = [[0, 1], [2, 3]]
+w = lambda k: sizes[k][1][0] - sizes[k][0][0]
+d = lambda k: sizes[k][1][1] - sizes[k][0][1]
+depth = sum(max(d(k) for k in row) for row in rows) + SPACE * (len(rows) - 1)
+width = max(sum(w(k) for k in row) + SPACE * (len(row) - 1) for row in rows)
+assert width <= BED - 10 and depth <= BED - 10, f"parts need {width:.1f} x {depth:.1f} mm"
+items, y = [None] * len(objects), (BED + depth) / 2
+for row in rows:
+    row_d = max(d(k) for k in row)
+    x = (BED - (sum(w(k) for k in row) + SPACE * (len(row) - 1))) / 2
+    for k in row:
+        lo, hi = sizes[k]
+        items[k] = (k, make_3mf.translate(x - lo[0], y - row_d / 2 - (lo[1] + hi[1]) / 2, -lo[2]))
+        x += w(k) + SPACE
+    y -= row_d + SPACE
 
 settings = make_3mf.bambu_settings(os.path.join(ROOT, "profiles", "bambu_project_settings.json"),
                                    os.path.join(ROOT, "profiles", "process.json"), SETTINGS)
@@ -41,5 +52,5 @@ out = os.path.join(HERE, "pcb_case_A1mini.3mf")
 make_3mf.write_bambu_3mf(out, objects, items, settings)
 for (name, _, tris), (lo, hi) in zip(objects, sizes):
     print(f"{name}: {len(tris)} triangles, {hi[0]-lo[0]:.1f} x {hi[1]-lo[1]:.1f} x {hi[2]-lo[2]:.1f} mm, bottom at z {lo[2]:.2f}")
-print(f"{out}: {width:.1f} mm across the {BED:.0f} mm plate")
+print(f"{out}: {width:.1f} x {depth:.1f} mm on the {BED:.0f} mm plate")
 print("changed from stock:", settings["different_settings_to_system"][0])

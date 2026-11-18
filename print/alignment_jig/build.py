@@ -22,6 +22,9 @@ XC       = SPACING / 2
 X_IN     = XC - CH_W / 2 - WALL
 X_OUT    = XC + CH_W / 2 + WALL
 TOP      = FLOOR + CH_H
+# Alignment lines: grooves along the strips in the top of the plate, mirrored about the centre.
+LINES_X  = (0.0, 7.0, 60.0)     # the centre line, then one each side at these distances from it
+LINE_W, LINE_W_CENTRE, LINE_D = 0.8, 1.2, 0.6
 
 
 def mesh_obj(name, verts, faces):
@@ -76,7 +79,17 @@ def build():
     for s in (1, -1):
         parts.append(wall(s * (X_IN + WALL), s * X_IN, HY_IN))        # inner, the reference wall
         parts.append(wall(s * (X_OUT - WALL), s * X_OUT, HY_OUT))     # outer
-    return union(parts)
+    jig = union(parts)
+    for x in sorted({s * d for d in LINES_X for s in (1, -1)}):
+        w = LINE_W_CENTRE if x == 0 else LINE_W
+        g = prism_z("line", [(x - w / 2, -HY_IN - 1), (x + w / 2, -HY_IN - 1), (x + w / 2, HY_IN + 1), (x - w / 2, HY_IN + 1)],
+                    FLOOR - LINE_D, FLOOR + 1)
+        m = jig.modifiers.new("b", "BOOLEAN")
+        m.operation, m.object, m.solver = "DIFFERENCE", g, "EXACT"
+        bpy.context.view_layer.objects.active = jig
+        bpy.ops.object.modifier_apply(modifier=m.name)
+        bpy.data.objects.remove(g, do_unlink=True)
+    return jig
 
 
 def check(ob):
@@ -128,6 +141,11 @@ def render(jig):
                   FLOOR, FLOOR + STRIP_H), alu)
     sc.render.filepath = os.path.join(OUT, "alignment_jig.png")
     bpy.ops.render.render(write_still=True)
+    top = os.environ.get("JIG_TOP_VIEW")              # optional second shot, straight down on the plate
+    if top:
+        cam.location = (0, -1, 420)
+        sc.render.filepath = top
+        bpy.ops.render.render(write_still=True)
 
 
 def main():

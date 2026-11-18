@@ -21,10 +21,20 @@ Part of [OSSGolf](https://ossgolf.com), open source golf projects.
 <p align="center"><sub>Carrier PCB v1.2, the current board: fabricated, hand-soldered and bench-tested. Details in <a href="pcb/README.md">pcb/</a>.</sub></p>
 
 <p align="center">
-  <img src="print/pcb_case/case_closed.jpg" width="300" alt="3D-printed case for the carrier PCB, closed: golf ball and oss/golf logos pressed into the lid">
-  <img src="print/pcb_case/case_open.jpg" width="300" alt="the case open: the board sits on four pegs in the base, the lid beside it">
+  <img src="print/pcb_case/case_closed.jpg" width="300" alt="3D-printed case for the carrier PCB, closed: an orange lid with a golf-ball badge and an oss/golf nameplate set into it in a second colour">
+  <img src="print/pcb_case/case_open.jpg" width="300" alt="the case open: the board sits on four pegs in the base, with the lid, the golf-ball badge and the nameplate beside it">
 </p>
-<p align="center"><sub>Snap-shut printed case for the v1.2 board: the board sits on four pegs through its mounting holes and the lid clips on by hand. Files in <a href="print/pcb_case/">print/pcb_case/</a>.</sub></p>
+<p align="center"><sub>Snap-shut printed case for the v1.2 board: the board sits on four pegs through its mounting holes and the lid clips on by hand. The golf-ball badge and the oss/golf nameplate are separate parts that press into the lid, so they can be printed in a second colour. Files in <a href="print/pcb_case/">print/pcb_case/</a>.</sub></p>
+
+<p align="center">
+  <img src="print/alignment_jig/alignment_jig.jpg" width="460" alt="3D-printed alignment jig: a flat plate with a cradle at each end for an LED channel and five alignment lines across it">
+</p>
+<p align="center"><sub>Printed jig that holds two sticks parallel, 8 in apart, with alignment lines at the centre and at 7 mm and 60 mm either side. Files in <a href="print/alignment_jig/">print/alignment_jig/</a>.</sub></p>
+
+<p align="center">
+  <img src="print/alignment_jig/alignment_jig.jpg" width="400" alt="3D-printed alignment jig: a flat plate with a channel at each end for a stick, and alignment lines grooved along it">
+</p>
+<p align="center"><sub>Printed jig that holds two sticks parallel, 8 in apart, with alignment lines grooved into the plate. Files in <a href="print/alignment_jig/">print/alignment_jig/</a>.</sub></p>
 
 ## Goal
 
@@ -53,10 +63,12 @@ Two ways to build it, same firmware and app. See [`docs/`](docs/):
   pipeline and the JLCPCB order files live there; [`pcb_build_spec.md`](pcb_build_spec.md)
   is the board spec.
 - [**print/alignment_jig/**](print/alignment_jig/) - a 3D-printed jig that holds two sticks
-  parallel, 8 in apart. Includes a Bambu Studio project for the A1 mini.
-- [**print/pcb_case/**](print/pcb_case/) - a 3D-printed case for the v1.2 carrier board that
-  snaps shut by hand, with openings for the USB and strip cables. Includes a Bambu Studio
+  parallel, 8 in apart, with alignment lines grooved into the plate. Includes a Bambu Studio
   project for the A1 mini.
+- [**print/pcb_case/**](print/pcb_case/) - a 3D-printed case for the v1.2 carrier board that
+  snaps shut by hand, with openings for the USB and strip cables. It prints as four parts:
+  base, lid, and a golf-ball badge and oss/golf nameplate that press into the lid and can be
+  a second colour. Includes a Bambu Studio project for the A1 mini.
 
 Each folder has a bill of materials, a wiring and flashing guide, and a pinned,
 ready-to-flash sketch. The sections below are the full hardware and firmware spec

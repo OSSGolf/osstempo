@@ -28,7 +28,7 @@ RIM_T   = 1.2                       # base inner wall (the rim the lid slides ov
 FIT     = 0.25                      # rim to lid wall, per side
 LID_T   = 1.6                       # lid wall
 FLOOR   = 1.6
-ROOF    = 1.8
+ROOF    = 2.0
 STANDOFF = 2.6                      # under the board, for the solder tails
 HEADROOM = 0.8                      # above the dev board's tallest part
 RIM_TOP = 7.5
@@ -38,7 +38,7 @@ HOLD_GAP = 0.1                      # column foot to board, so the latches alway
 BUMP    = 0.9                       # latch bump height
 BUMP_HY, TAB_HY = 5.0, 9.0          # half widths: bump, flexing tab
 SLIT_TOP = 20.0                     # the tab flexes from here down (lower on the open-frame lid)
-DEBOSS  = 0.6
+DEBOSS  = 0.8                       # deep enough that first-layer squish cannot close the artwork
 
 Z_BOT   = FLOOR + STANDOFF                      # board underside
 Z_TOP   = Z_BOT + PCB_T                         # board top face
@@ -225,31 +225,105 @@ def build_base():
     return boolean(plate, parts, "UNION")
 
 
-def wordmark(y_mid, zc, width=46.0):
+def wordmark(y_mid, zc, width=46.0, depth=None):
     """oss/golf: prompt chevron and letters from the logo's own SVG paths, then the flag cursor box."""
+    depth = DEBOSS if depth is None else depth
     u = width / (4660 - 81)                       # SVG units -> mm across the prompt row (chevron to cursor box)
     x_left = -width / 2
     def svg(x, y): return x_left + (x - 81) * u, y_mid + (560 - y) * u      # row centre is y = 560 in SVG units
     loops = [[svg(x, y) for x, y in lp] for lp in svg_loops(WORDMARK_SVG)]
     holes = [lp for lp in loops if any(lp is not o and inside(lp[0], o) for o in loops)]   # counters of o and g
-    cut = [prism("glyph", lp, zc - DEBOSS, zc + 1) for lp in loops if lp not in holes]
-    keep = [prism("counter", lp, zc - DEBOSS - 0.01, zc) for lp in holes]
+    cut = [prism("glyph", lp, zc - depth, zc + 1) for lp in loops if lp not in holes]
+    keep = [prism("counter", lp, zc - depth - 0.01, zc) for lp in holes]
     seen = {}
     for lp in loops:                              # where pixel corners meet at a point, open a hairline so the mesh stays simple
         for p in lp:
             k = (round(p[0], 3), round(p[1], 3)); seen[k] = seen.get(k, 0) + 1
-    cut += [prism("pinch", circle(x, y, 0.12, 4), zc - DEBOSS, zc + 1) for (x, y), n in seen.items() if n > 1]
+    cut += [prism("pinch", circle(x, y, 0.12, 4), zc - depth, zc + 1) for (x, y), n in seen.items() if n > 1]
     def rect(x0, y0, x1, y1, z0, z1):
         (ax, ay), (bx, by) = svg(x0, y1), svg(x1, y0)
         return box("r", ax, bx, ay, by, z0, z1)
-    cut.append(boolean(rect(4120, 100, 4660, 880, zc - DEBOSS, zc + 1),          # pole and flag stay standing in the box
+    cut.append(boolean(rect(4120, 100, 4660, 880, zc - depth, zc + 1),          # pole and flag stay standing in the box
                        [rect(4240, 220, 4300, 760, zc - 1, zc + 2), rect(4300, 220, 4420, 460, zc - 1, zc + 2),
                         rect(4420, 280, 4540, 400, zc - 1, zc + 2)], "DIFFERENCE"))
     return cut, keep
 
 
-def dimple(x, y, zc):
-    return prism("dot", circle(x, y, 1.05, 20), zc - DEBOSS, zc + 1)
+def dimple(x, y, zc, r=1.05, depth=None):
+    return prism("dot", circle(x, y, r, 24), zc - (DEBOSS if depth is None else depth), zc + 1)
+
+
+def bold_text(body, font_path, width, cx, cy, z, depth, grow):
+    """The text plus four copies nudged `grow` mm each way: every stroke comes out 2 x grow wider."""
+    return [text_solid(body, font_path, width, cx + dx, cy + dy, z, depth)
+            for dx, dy in ((0, 0), (grow, 0), (-grow, 0), (0, grow), (0, -grow))]
+
+
+# The golf ball is its own part. Fine detail prints cleanly only on a top surface, and the lid's top
+# is the face that sits on the bed, so the ball is a thin badge printed face-up that presses into a
+# pocket in the lid. It can also be printed in a second colour.
+BADGE_C, BADGE_R, BADGE_T = (0.0, 9.5), 23.0, 1.2
+BADGE_FIT   = 0.1                   # radial clearance in the pocket; crush ribs take up the rest
+BADGE_KEY   = (7.0, 2.5)            # a tab at the bottom edge, so the badge only goes in upright
+BADGE_ART   = 0.4                   # artwork depth: two layers
+# The oss/golf wordmark gets the same treatment: on the bed face the insides of its o and g are
+# specks of first layer with nothing to hold them, and they do not survive.
+PLATE_C, PLATE_W, PLATE_H, PLATE_R = (0.0, -27.5), 51.0, 10.5, 2.2
+PLATE_KEY = (-15.0, 5.0, 1.5)       # tab on the top edge: x centre, width, height
+
+
+def plate_outline(grow=0.0):
+    cx, cy = PLATE_C
+    kx, kw, kh = PLATE_KEY
+    top = cy + PLATE_H / 2
+    return [[(x + cx, y + cy) for x, y in rrect(PLATE_W + 2 * grow, PLATE_H + 2 * grow, PLATE_R + grow)],
+            [(kx - kw / 2 - grow, cy), (kx + kw / 2 + grow, cy), (kx + kw / 2 + grow, top + kh + grow), (kx - kw / 2 - grow, top + kh + grow)]]
+
+
+def build_plate():
+    body, key = plate_outline(-BADGE_FIT)
+    plate = boolean(prism("plate", body, 0, BADGE_T), [prism("key", key, 0, BADGE_T)], "UNION")
+    cut, keep = wordmark(PLATE_C[1], BADGE_T, 46.0, BADGE_ART)
+    boolean(plate, cut, "DIFFERENCE")
+    return boolean(plate, keep, "UNION")           # the insides of o and g, standing on solid plastic here
+
+
+def rib(px, py, ux, uy, zc):
+    """Crush rib on a pocket wall at (px, py), pointing into the pocket along (ux, uy)."""
+    w, vx, vy = 0.4, -uy, ux
+    a, b = -0.5, 0.18                               # from inside the wall to 0.18 mm proud of it
+    return prism("rib", [(px + ux * a - vx * w, py + uy * a - vy * w), (px + ux * b - vx * w, py + uy * b - vy * w),
+                         (px + ux * b + vx * w, py + uy * b + vy * w), (px + ux * a + vx * w, py + uy * a + vy * w)],
+                 zc - BADGE_T - 0.01, zc - 0.3)
+
+
+def badge_outline(grow=0.0):
+    """Disc plus key tab, as two overlapping outlines (unioned by the caller's boolean)."""
+    cx, cy = BADGE_C
+    kw, kh = BADGE_KEY
+    y0 = cy - BADGE_R - kh - grow
+    return [circle(cx, cy, BADGE_R + grow, 128),
+            [(cx - kw / 2 - grow, y0), (cx + kw / 2 + grow, y0), (cx + kw / 2 + grow, cy), (cx - kw / 2 - grow, cy)]]
+
+
+def build_badge():
+    cx, cy = BADGE_C
+    disc, key = badge_outline(-BADGE_FIT)
+    badge = boolean(loft("badge", [([(cx + (x - cx) * (BADGE_R - 0.3) / BADGE_R, cy + (y - cy) * (BADGE_R - 0.3) / BADGE_R) for x, y in disc], 0),
+                                   (disc, 0.3), (disc, BADGE_T)]),                # 0.3 chamfer on the bed edge leads it into the pocket
+                    [prism("key", key, 0, BADGE_T)], "UNION")
+    zc, d = BADGE_T, 2 * BADGE_ART
+    cut = bold_text("OSSTempo", SCRIPT_FONT, 36.0, cx, cy + 3.5, zc, d, 0.18)
+    cut += bold_text("1", NUMBER_FONT, 3.2, cx, cy - 7.5, zc, d, 0.15)
+    pitch, lx, ly, lr = 3.6, cx + 6.5, cy + 6.5, 20.0      # dimples: a crescent on the lower left, as on the silkscreen
+    for j in range(-8, 9):
+        for i in range(-8, 9):
+            x, y = cx + (i + 0.5 * (j % 2)) * pitch, cy + j * pitch * 0.866
+            if math.hypot(x - cx, y - cy) > BADGE_R - 2.4 or math.hypot(x - lx, y - ly) < lr: continue
+            if y > cy - 2: continue                                          # the crescent sits below the script
+            if abs(x - cx) < 3.5 and abs(y - (cy - 7.5)) < 5: continue       # and of the 1
+            cut.append(dimple(x, y, zc, 1.15, BADGE_ART))
+    return boolean(badge, cut, "DIFFERENCE")
 
 
 def build_art():
@@ -269,19 +343,17 @@ def build_art():
                 if abs(x) > X_OUT - 6 and abs(y) > Y_OUT - 6: continue            # the rounded corners
                 cut.append(dimple(x, y, zc))
         return cut, keep
-    bx, by, br = 0.0, 9.5, 22.5                   # A: the golf ball from the board's silkscreen
-    cut, keep = wordmark(-27.0, zc)
-    cut.append(boolean(prism("ring", circle(bx, by, br, 96), zc - DEBOSS, zc + 1),
-                       [prism("r", circle(bx, by, br - 1.0, 96), zc - 1, zc + 2)], "DIFFERENCE"))
-    cut += [text_solid("OSSTempo", SCRIPT_FONT, 31.0, bx, by + 3.0, zc, d), text_solid("1", NUMBER_FONT, 2.6, bx, by - 6.5, zc, d)]
-    pitch, lx, ly, lr = 3.5, bx + 6.5, by + 6.5, 20.5      # dimples: a crescent on the lower left
-    for j in range(-8, 9):
-        for i in range(-8, 9):
-            x, y = bx + (i + 0.5 * (j % 2)) * pitch, by + j * pitch * 0.866
-            if math.hypot(x - bx, y - by) > br - 2.6 or math.hypot(x - lx, y - ly) < lr: continue
-            if abs(x - bx) < 17 and by - 1 < y < by + 8: continue          # keep clear of the script
-            if abs(x - bx) < 3 and abs(y - (by - 6.5)) < 4: continue       # and of the 1
-            cut.append(dimple(x, y, zc))
+    # A: two pockets, for the golf-ball badge and the oss/golf nameplate, each with crush ribs so the
+    # part presses in and stays.
+    cut = [prism("pocket", o, zc - BADGE_T, zc + 1) for o in badge_outline() + plate_outline()]
+    keep = []
+    cx, cy = BADGE_C
+    for deg in (30, 90, 150, 210, 330):                    # none at 270: that is the key tab
+        ux, uy = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+        keep.append(rib(cx + ux * BADGE_R, cy + uy * BADGE_R, -ux, -uy, zc))
+    px, py = PLATE_C
+    for x in (0.0, 15.0): keep.append(rib(px + x, py + PLATE_H / 2, 0, -1, zc))
+    for x in (-15.0, 0.0, 15.0): keep.append(rib(px + x, py - PLATE_H / 2, 0, 1, zc))
     return cut, keep
 
 
@@ -403,23 +475,31 @@ def main():
         bpy.data.objects.remove(o, do_unlink=True)
     base, lid = build_base(), build_lid(art=not os.environ.get("CASE_NO_ART"))
     bad = check(base, "base") + check(lid, "lid")
+    badge = plate = None
+    if VARIANT == "a":
+        badge, plate = build_badge(), build_plate()
+        bad += check(badge, "badge") + check(plate, "plate")
     print(f"CASE closed: {2 * X_OUT:.1f} x {2 * Y_OUT:.1f} x {Z_LID:.1f} mm; board top at {Z_TOP:.1f}, dev board top at {Z_DEV:.1f}, "
           f"ceiling at {Z_CEIL:.1f}, USB window centre {(Z_DEV + USB_MID - 3.9 + Z_LID - 1.0) / 2:.1f}")
     if bad: print(f"CASE WARNING: {bad} non-manifold edges")
     opts = os.environ.get("CASE_OPTIONS_DIR")      # comparison renders only: no STLs
     if not opts:
         export(base, "case_base.stl"); export(lid, "case_lid.stl", flip=True)
+        if badge: export(badge, "case_badge.stl"); export(plate, "case_plate.stl")
     if os.environ.get("CASE_NO_RENDER"): return
     out = opts or OUT
     sc, cam, tgt = scene_setup()
     orange, cream = mat((0.95, 0.38, 0.05), 0.55), mat((0.92, 0.9, 0.84), 0.55)
     paint(base, cream); paint(lid, orange)
+    for part in (badge, plate):
+        if part: paint(part, cream); part.location.z = Z_LID - BADGE_T        # seated in its pocket
     inner = stack()
     shot(sc, cam, tgt, os.path.join(out, f"{VARIANT}_closed.png"), (150, -190, 150), (0, 0, 10))
     shot(sc, cam, tgt, os.path.join(out, f"{VARIANT}_top.png"), (0, -1, 330), (0, 0, 10))
     if not opts:
         shot(sc, cam, tgt, os.path.join(out, f"{VARIANT}_usb_end.png"), (-120, 210, 110), (0, 0, 10))
     lid.rotation_euler = (math.pi, 0, 0); lid.location = (75, 0, Z_LID)      # opened: board in the base, lid beside it
-    shot(sc, cam, tgt, os.path.join(out, f"{VARIANT}_open.png"), (190, -230, 200), (35, 0, 8))
+    if badge: badge.location = (140, 5, 0); plate.location = (140, -20, 0)    # the two inserts on their own, as printed
+    shot(sc, cam, tgt, os.path.join(out, f"{VARIANT}_open.png"), (230, -290, 260), (62, 0, 8))
 
 main()
