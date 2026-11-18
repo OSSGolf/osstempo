@@ -20,6 +20,12 @@ Part of [OSSGolf](https://ossgolf.com), open source golf projects.
 </p>
 <p align="center"><sub>Carrier PCB v1.2, the current board: fabricated, hand-soldered and bench-tested. Details in <a href="pcb/README.md">pcb/</a>.</sub></p>
 
+<p align="center">
+  <img src="print/pcb_case/case_closed.jpg" width="300" alt="3D-printed case for the carrier PCB, closed: golf ball and oss/golf logos pressed into the lid">
+  <img src="print/pcb_case/case_open.jpg" width="300" alt="the case open: the board sits on four pegs in the base, the lid beside it">
+</p>
+<p align="center"><sub>Snap-shut printed case for the v1.2 board: the board sits on four pegs through its mounting holes and the lid clips on by hand. Files in <a href="print/pcb_case/">print/pcb_case/</a>.</sub></p>
+
 ## Goal
 
 A white LED "comet" sweeps along the strip following a pendulum/arc model so the
@@ -48,6 +54,9 @@ Two ways to build it, same firmware and app. See [`docs/`](docs/):
   is the board spec.
 - [**print/alignment_jig/**](print/alignment_jig/) - a 3D-printed jig that holds two sticks
   parallel, 8 in apart. Includes a Bambu Studio project for the A1 mini.
+- [**print/pcb_case/**](print/pcb_case/) - a 3D-printed case for the v1.2 carrier board that
+  snaps shut by hand, with openings for the USB and strip cables. Includes a Bambu Studio
+  project for the A1 mini.
 
 Each folder has a bill of materials, a wiring and flashing guide, and a pinned,
 ready-to-flash sketch. The sections below are the full hardware and firmware spec
