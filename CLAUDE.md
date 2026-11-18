@@ -7,7 +7,7 @@ controlled over BLE. See `README.md` for the full hardware/firmware/physics spec
 ## Layout
 - `tempo_trainer/tempo_trainer.ino` — the firmware (Arduino C++, FastLED + ESP32 BLE + Preferences).
 - `web/index.html` — Web Bluetooth control page (single self-contained file).
-- **iOS app lives in the separate [osstempo-ios repo](https://github.com/OSSGolf/osstempo-ios)** — checked out locally at `~/Documents/workspace/OSSTempo` (NOT alongside this repo). Native SwiftUI + CoreBluetooth controller, dev-only (no App Store). **Implemented** (Swift 6, 4-layer: Domain/BLE/App/UI, pure reducer + `@Observable` shell); talks to the same BLE GATT. See its `DESIGN.md` + `README.md`. Build/test via **`Tools/test.sh`** in that repo — a plain `xcodebuild test` leaks ~20-50 MB of simulator data per run and the wrapper caps it. It uses the **iPhone 17** simulator (iPhone 16 isn't installed for iOS 26.5) with `-parallel-testing-enabled NO`.
+- **iOS app lives in the separate [osstempo-ios repo](https://github.com/OSSGolf/osstempo-ios)** — kept in its own checkout, separate from this repo. Native SwiftUI + CoreBluetooth controller, dev-only (no App Store). **Implemented** (Swift 6, 4-layer: Domain/BLE/App/UI, pure reducer + `@Observable` shell); talks to the same BLE GATT. See its `DESIGN.md` + `README.md`. Build/test via **`Tools/test.sh`** in that repo — a plain `xcodebuild test` leaks ~20-50 MB of simulator data per run and the wrapper caps it. It uses the **iPhone 17** simulator (iPhone 16 isn't installed for iOS 26.5) with `-parallel-testing-enabled NO`.
 
 ## Firmware build (verified)
 `arduino-cli` is installed. Build and flash through **`tools/flash.sh`**, not bare `arduino-cli`.
@@ -45,7 +45,7 @@ sh tools/flash.sh --loop                    # flash a batch, swapping boards bet
 - Build with **`sh pcb/build.sh`** only. It runs validate twice, reseeds `pcb/routed/`, writes the
   JLC order files, and **stops the Podman VM on exit** (idle it holds 2 cores + 4 GB). Never leave
   the VM running after a build. The board builds with the `osstempo-patches-v2` toolkit branch
-  (upstream main + our patches) checked out in `~/workspace/kicad-agent-toolkit`, which is what
+  (upstream main + our patches) checked out beside this repo (`../kicad-agent-toolkit`), which is what
   `pcb/env.sh` points at by default. The older `osstempo-patches` branch that built the ordered
   v1.2 is deleted; a rebuild differs from the ordered gerbers only in Edge_Cuts corner segments.
 - Silkscreen artwork: `pcb/examples/osstempo_led_carrier/artwork/silk_back_v1_2.json` ->
