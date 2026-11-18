@@ -11,7 +11,7 @@ and **full swing** — selectable over BLE. The cue is purely visual.
 Part of [OSSGolf](https://ossgolf.com), open source golf projects.
 
 <p align="center">
-  <a href="https://ossgolf.com/media/osstempo-putting.mp4"><img src="docs/media/osstempo-putting.webp" width="320" alt="OSSTempo running a putting stroke on a practice mat: the white comet sweeps the LED strip beside the ball while the green dot marks impact"></a>
+  <a href="https://ossgolf.com/media/osstempo-putting.mp4"><img src="docs/media/osstempo-putting.webp" width="360" alt="OSSTempo running a putting stroke on a practice mat: the white comet sweeps the LED strip beside the ball while the green dot marks impact"></a>
 </p>
 <p align="center"><sub>The stick pacing real putts on a practice mat. Click for the <a href="https://ossgolf.com/media/osstempo-putting.mp4">video with sound</a>.</sub></p>
 
