@@ -4,8 +4,8 @@
 
 # OSSTempo
 
-A tempo trainer: an LED strip animates a swing so the user follows a moving dot
-to groove their tempo.
+A golf tempo trainer you build yourself: an ESP32, an LED strip, and a dot of light
+that paces your stroke.
 
 Part of [OSSGolf](https://ossgolf.com), open source golf projects.
 
