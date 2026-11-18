@@ -134,7 +134,20 @@ if [ "$board" = "dig2go" ]; then
   set -- "$@" --build-property "compiler.cpp.extra_flags=-DBOARD_DIG2GO"
 fi
 
-echo "==> Compiling $SKETCH ($board build)"
+# Stamp the build with the commit it came from, so a stick can report its firmware over BLE (Device
+# Information Service, see FW_VERSION in the sketch). "-dirty" means the firmware sources differ
+# from that commit. Written as an untracked header rather than a -D flag: a flag change recompiles
+# every library, and the header is rewritten only when the stamp actually changes.
+VERSION_H="$REPO_ROOT/$SKETCH/build_version.h"
+fw_git="nogit"
+if git -C "$REPO_ROOT" rev-parse --short HEAD >/dev/null 2>&1; then
+  fw_git=$(git -C "$REPO_ROOT" rev-parse --short HEAD)
+  [ -n "$(git -C "$REPO_ROOT" status --porcelain -- "$SKETCH")" ] && fw_git="$fw_git-dirty"
+fi
+stamp="#define FW_GIT \"$fw_git\""
+[ -f "$VERSION_H" ] && [ "$(cat "$VERSION_H")" = "$stamp" ] || printf '%s\n' "$stamp" > "$VERSION_H"
+
+echo "==> Compiling $SKETCH ($board build, firmware $fw_git)"
 arduino-cli "$@" "$REPO_ROOT/$SKETCH"
 
 [ "$compile_only" -eq 1 ] && exit 0

@@ -247,9 +247,9 @@
     <div class="ctl">
       <div class="ctl-head">
         <span class="name">Reach<span class="hint">how far back</span></span>
-        <span class="val"><span id="reachLed">58</span><span class="u"> led ·</span> <span id="reachCm">40.3</span><span class="u"> cm</span></span>
+        <span class="val"><span id="reachLed">23</span><span class="u"> led ·</span> <span id="reachCm">16.0</span><span class="u"> cm</span></span>
       </div>
-      <input type="range" id="reach" class="accent-amber" min="1" max="71" value="58" />
+      <input type="range" id="reach" class="accent-amber" min="1" max="71" value="23" />
     </div>
   </div>
 
@@ -257,20 +257,28 @@
   <div class="card">
     <div class="section-label">Tempo</div>
     <div class="ctl">
-      <div class="ctl-head"><span class="name">Backswing</span><span class="val"><span id="backVal">700</span><span class="u"> ms</span></span></div>
-      <input type="range" id="back" min="100" max="2000" step="10" value="700" />
+      <div class="ctl-head"><span class="name">Backswing</span><span class="val"><span id="backVal">650</span><span class="u"> ms</span></span></div>
+      <input type="range" id="back" min="100" max="2000" step="10" value="650" />
     </div>
-    <div class="ctl">
-      <div class="ctl-head"><span class="name">Downswing<span class="hint">to impact</span></span><span class="val"><span id="downVal">350</span><span class="u"> ms</span></span></div>
-      <input type="range" id="down" min="100" max="1500" step="10" value="350" />
+    <!-- Putt: the downswing is always half the backswing (2:1), so it is computed, not set. -->
+    <div class="ctl full-only">
+      <div class="ctl-head"><span class="name">Downswing<span class="hint">to impact</span></span><span class="val"><span id="downVal">325</span><span class="u"> ms</span></span></div>
+      <input type="range" id="down" min="100" max="1500" step="10" value="325" />
     </div>
-    <div class="ctl">
+    <div class="ctl full-only">
       <div class="ctl-head"><span class="name">Release<span class="hint">lag into impact</span></span><span class="val"><span id="relVal">0</span><span class="u"> / 100</span></span></div>
       <input type="range" id="rel" class="accent-amber" min="0" max="100" value="0" />
     </div>
     <div class="ctl">
-      <div class="ctl-head"><span class="name">Follow-through<span class="hint">after impact</span></span><span class="val"><span id="followVal">350</span><span class="u"> ms</span></span></div>
-      <input type="range" id="follow" min="0" max="3000" step="10" value="350" />
+      <div class="ctl-head"><span class="name">Follow-through<span class="hint">past the ball at impact speed</span></span><span class="val"><span id="followVal">201</span><span class="u"> ms</span></span></div>
+      <label class="tgl">
+        <input type="checkbox" id="follow" checked />
+        <span class="name">On<span class="hint">its time follows from the downswing, so there is nothing to set</span></span>
+      </label>
+      <label class="tgl">
+        <input type="checkbox" id="through" checked />
+        <span class="name">Constant speed<span class="hint">on: holds impact speed to the finish &mdash; off: pendulum, slows to a stop at the finish. Same stroke up to impact either way</span></span>
+      </label>
     </div>
     <div class="ctl full-only">
       <div class="ctl-head"><span class="name">Top pause<span class="hint">transition</span></span><span class="val"><span id="topVal">150</span><span class="u"> ms</span></span></div>
@@ -285,6 +293,10 @@
       <div class="ctl">
         <div class="ctl-head"><span class="name">Brightness</span><span class="val"><span id="briVal">40</span><span class="u"> / 255</span></span></div>
         <input type="range" id="bri" min="2" max="255" value="40" />
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><span class="name">Comet tail<span class="hint">fading trail behind the moving light; 0 = none</span></span><span class="val"><span id="tailVal">0</span><span class="u"> LEDs</span></span></div>
+        <input type="range" id="tail" min="0" max="20" value="0" />
       </div>
       <div class="ctl">
         <label class="tgl">
@@ -307,6 +319,7 @@
     </div>
   </details>
 
+  <p class="foot" id="fwLine" hidden>Stick firmware: <code id="fwVer"></code></p>
   <p class="foot">
     Needs <strong>Web Bluetooth</strong> — Chrome/Edge (desktop or Android) over <code>https</code> or <code>localhost</code>.
     iOS: use the <em>Bluefy</em> browser. The strip above previews your settings even before connecting.
@@ -326,11 +339,15 @@ const U = (t) => `6e40${String(t).padStart(4, "0")}-b5a3-f393-e0a9-e50e24dcca9e`
 const CH = {
   back:  U("0002"), down: U("0003"), reach: U("0004"), bri: U("0005"), control: U("0006"),
   ready: U("0007"), hold: U("0008"), rest: U("0009"), mode: U("000a"), top: U("000b"),
-  release: U("000c"), follow: U("000d"), flip: U("0014"),
+  release: U("000c"), follow: U("000d"), flip: U("0014"), tail: U("0015"), through: U("0016"),
 };
 // Characteristics a stick may legitimately not have, so older firmware still connects. Mirrors
 // Param.optionalParams in the iOS app.
-const OPTIONAL_CH = new Set([CH.flip]);
+const OPTIONAL_CH = new Set([CH.flip, CH.tail, CH.through]);
+// What "follow-through on" writes to …000d. The firmware only tests it for non-zero; the mode's
+// default is used so a stick on firmware that still reads it as a time gets a sensible one.
+const FOLLOW_ON = { 0: 350, 1: 300 };
+const LEGACY_TAIL = 6;         // firmware before …0015 draws a fixed 6-LED tail
 
 const NUM = 144, CENTER = (NUM - 1) / 2, HALF = (NUM - 1) >> 1;
 const CM_PER_LED = 100 / NUM;          // 144 LEDs / 1 m
@@ -338,11 +355,13 @@ const CM_PER_LED = 100 / NUM;          // 144 LEDs / 1 m
 /* ====================== State ====================== */
 // Web app is source of truth for the session. Per-mode profiles + shared globals.
 const profiles = {
-  0: { back: 700, down: 350, reach: 58, top: 0,   release: 0,  follow: 350 },   // putt: pendular
+  0: { back: 650, down: 325, reach: 23, top: 0,   release: 0,  follow: 350 },   // putt: 2:1 at the tour-average backswing
   1: { back: 900, down: 300, reach: 60, top: 150, release: 55, follow: 300 },   // full: moderate lag
 };
-const globals = { bri: 40, ready: 1000, hold: 600, rest: 3000, flip: 0 };
+const globals = { bri: 40, ready: 1000, hold: 600, rest: 3000, flip: 0, tail: 0, through: 1 };   // through: 0 pendulum / 1 constant
+let throughSupported = true;   // cleared when a connected stick has no …0016
 let flipSupported = true;      // cleared when a connected stick has no …0014
+let tailSupported = true;      // cleared when a connected stick has no …0015
 let mode = 0;          // 0 putt, 1 full
 let runState = 1;      // 0 idle, 1 loop, 2 single, 3 preview  (animate locally by default)
 const P = () => profiles[mode];
@@ -353,23 +372,51 @@ const easeOut   = p => Math.sin(p * Math.PI / 2);
 // drop-to-impact: free pendulum (rel 0) -> late lag release (rel 1)
 const dropEase  = (ph, rel) => { const pend = 1 - Math.cos(ph * Math.PI / 2); return pend + (ph*ph*ph*ph - pend) * rel; };
 
+// Follow-through holds the comet's impact speed to the finish (firmware followDurMs): its time
+// comes from the downswing leg that arrives at impact, and the "follow" setting is only on
+// (non-zero) / off (0). `downSeg` is the whole downswing for a putt, the last leg for a full swing.
+// Putt up to impact: Grober's resonant pendulum (arXiv:0903.1762), X(th) = sin th - sin(2th)/2.
+const GROBER_TOP = 2 * Math.PI / 3, GROBER_AMP = 1.2990381;
+const GROBER_IMPACT_SLOPE = (2 * Math.PI / 3) / GROBER_AMP;      // impact speed / average downswing speed = 1.61
+const groberX = th => Math.sin(th) - 0.5 * Math.sin(2 * th);
+const puttBackEase = ph => groberX(ph * GROBER_TOP) / GROBER_AMP;
+const puttDownEase = (ph, r) => {
+  const pend = 1 - groberX(GROBER_TOP + ph * (Math.PI - GROBER_TOP)) / GROBER_AMP;
+  return pend + (ph ** 4 - pend) * r;
+};
+// Through-swing style (…0016): pendulum slows to rest (a quarter sine, pi/2 times as long), constant holds speed.
+const throughEase = ph => globals.through ? ph : Math.sin(ph * Math.PI / 2);
+function followDurMs(p, downSeg) {
+  if (!p.follow) return 0;
+  const base = mode === 0 ? GROBER_IMPACT_SLOPE : Math.PI / 2;
+  const stretch = globals.through ? 1 : Math.PI / 2;
+  return Math.max(1, Math.floor(downSeg / (base + (4 - base) * (p.release / 100)) * stretch));
+}
+// The downswing leg that arrives at impact, in ms, for the active mode.
+function impactLegMs(p) {
+  if (mode === 0) return p.down;
+  const dOut = (NUM - 1) - CENTER, dIn = dOut - p.reach;
+  return p.down - Math.floor(p.down * dIn / (dIn + dOut));
+}
+
 // Build the timeline of one full rep for the active mode.
 // Each segment: { dur, pos(ph)->led|null, marks:[{i,c}], label }
 function buildTimeline() {
   const p = P(), amp = p.reach, rel = p.release / 100;
   const G = (c) => ({ green: "--green", amber: "--amber", red: "--red" }[c]);
   const MB = { i: Math.round(CENTER), c: G("green") };       // ball
+  const followDur = (downSeg) => followDurMs(p, downSeg);
   if (mode === 0) {
     const top = CENTER + amp;
     const MT = { i: Math.round(top), c: G("amber") };
     return [
       { dur: globals.ready, pos: () => null, marks: [MB],     label: "set up" },
       { dur: globals.ready, pos: () => null, marks: [MB, MT], label: "aim" },
-      { dur: p.back, pos: ph => CENTER + amp * Math.sin(ph * Math.PI / 2), marks: [MB, MT], label: "backswing" },
-      { dur: p.down,   pos: ph => CENTER + amp * (1 - dropEase(ph, rel)),  marks: [MB], label: "impact" },
-      { dur: p.follow, pos: ph => CENTER - amp * easeOut(ph),              marks: [MB], label: "follow" },
-      { dur: globals.hold, pos: () => CENTER - amp, marks: [MB], label: "finish" },
-      { dur: globals.rest, pos: () => null, marks: [], label: "rest" },
+      { dur: p.back, pos: ph => CENTER + amp * puttBackEase(ph), marks: [MB, MT], label: "backswing" },
+      { dur: p.down,   pos: ph => CENTER + amp * (1 - puttDownEase(ph, rel)), marks: [MB], label: "impact" },
+      { dur: followDur(p.down), pos: ph => CENTER - amp * throughEase(ph), marks: [MB], label: "follow" },
+      { dur: globals.hold, pos: () => p.follow ? CENTER - amp : CENTER, marks: [MB], label: "finish" },
+      { dur: globals.rest, pos: () => null, marks: [MB, MT], label: "rest" },
     ];
   }
   // full swing
@@ -389,9 +436,9 @@ function buildTimeline() {
     { dur: p.top, pos: () => backAmber, marks: ALL, label: "transition" },
     { dur: dBack, pos: lerp(backAmber, backRed, easeInOut), marks: ALL, label: "drop" },
     { dur: dDown, pos: ph => backRed + (CENTER - backRed) * dropEase(ph, rel), marks: ALL, label: "impact" },
-    { dur: p.follow, pos: lerp(CENTER, folRed, easeOut),    marks: ALL, label: "follow" },
-    { dur: globals.hold, pos: () => folRed, marks: ALL, label: "finish" },
-    { dur: globals.rest, pos: () => null, marks: [], label: "rest" },
+    { dur: followDur(dDown), pos: lerp(CENTER, folRed, throughEase), marks: ALL, label: "follow" },
+    { dur: globals.hold, pos: () => p.follow ? folRed : CENTER, marks: ALL, label: "finish" },
+    { dur: globals.rest, pos: () => null, marks: ALL, label: "rest" },
   ];
 }
 
@@ -451,9 +498,10 @@ function render(state) {
     const x = ledX(state.pos);
     // tail
     const dir = state.vel >= 0 ? -1 : 1;
-    for (let t = 1; t <= 7; t++) {
+    const tailDots = Math.round(globals.tail / 1.1);     // dots are drawn 1.1 LEDs apart
+    for (let t = 1; t <= tailDots; t++) {
       const tx = ledX(state.pos + dir * t * 1.1);
-      glowDot(tx, y, 9, "rgba(255,255,255,1)", 0.10 * (1 - t / 8));
+      glowDot(tx, y, 9, "rgba(255,255,255,1)", 0.10 * (1 - t / (tailDots + 1)));
     }
     glowDot(x, y, 22, "rgba(255,255,255,.9)", 0.5);
     glowDot(x, y, 11, "#ffffff", 0.9);
@@ -515,7 +563,8 @@ function refreshReadouts() {
   $("downVal").textContent = p.down;
   $("topVal").textContent  = p.top;
   $("relVal").textContent  = p.release;
-  $("followVal").textContent = p.follow;
+  $("followVal").textContent = p.follow ? followDurMs(p, impactLegMs(p)) : "off";
+  $("tailVal").textContent = globals.tail;
   $("reachLed").textContent = p.reach;
   $("reachCm").textContent = (p.reach * CM_PER_LED).toFixed(1);
   $("briVal").textContent = globals.bri;
@@ -526,7 +575,9 @@ function refreshReadouts() {
   $("ratioVal").textContent = (p.back / p.down).toFixed(1);
   // sliders
   $("back").value = p.back; $("down").value = p.down; $("top").value = p.top; $("rel").value = p.release;
-  $("follow").value = p.follow;
+  $("follow").checked = p.follow !== 0;
+  $("through").checked = globals.through !== 0;
+  $("tail").value = globals.tail;
   $("reach").value = p.reach; $("bri").value = globals.bri;
   $("ready").value = globals.ready; $("hold").value = globals.hold; $("rest").value = globals.rest;
   rebuild();
@@ -544,15 +595,36 @@ function bindParam(id, scope, key, ch, twoByte) {
   el.addEventListener("input", () => apply(true));
 }
 bindParam("back", "p", "back", CH.back, true);
+// Putt: backswing time is the only tempo input. Downswing is half of it and there is no lag shaping.
+$("back").addEventListener("input", () => {
+  if (mode !== 0) return;
+  const p = P(), down = Math.max(100, Math.floor(p.back / 2));
+  if (p.down !== down) { p.down = down; queueWrite(CH.down, down, true); }
+  if (p.release !== 0) { p.release = 0; queueWrite(CH.release, 0, false); }
+  refreshReadouts();
+});
 bindParam("down", "p", "down", CH.down, true);
 bindParam("top", "p", "top", CH.top, true);
 bindParam("rel", "p", "release", CH.release, false);
-bindParam("follow", "p", "follow", CH.follow, true);
+bindParam("tail", "g", "tail", CH.tail, false);
 bindParam("reach", "p", "reach", CH.reach, false);
 bindParam("bri", "g", "bri", CH.bri, false);
 bindParam("ready", "g", "ready", CH.ready, true);
 bindParam("hold", "g", "hold", CH.hold, true);
 bindParam("rest", "g", "rest", CH.rest, true);
+
+// Follow-through is a switch: on writes the mode's default, off writes 0.
+$("follow").addEventListener("change", () => {
+  P().follow = $("follow").checked ? FOLLOW_ON[mode] : 0;
+  refreshReadouts();
+  queueWrite(CH.follow, P().follow, true);
+});
+
+$("through").addEventListener("change", () => {
+  globals.through = $("through").checked ? 1 : 0;
+  refreshReadouts();
+  queueWrite(CH.through, globals.through, false);
+});
 
 // Orientation is a checkbox, not a slider: state + an immediate write, and the local canvas
 // mirrors straight away so the page answers the tap even before the stick does.
@@ -658,12 +730,26 @@ function writeNow(ch, value, twoByte) {
   return gattOp(() => chars[ch].writeValue(bytes));
 }
 
+// Firmware identity from the standard Device Information Service. Advisory: any failure (older
+// firmware has no such service) just reads as "not reported".
+async function readFirmware() {
+  try {
+    const info = await server.getPrimaryService("device_information");
+    const dec = new TextDecoder();
+    const text = async (name) => dec.decode(await gattOp(async () => (await info.getCharacteristic(name)).readValue()));
+    const fw = await text("firmware_revision_string");
+    let model = "";
+    try { model = await text("model_number_string"); } catch (e) { /* optional */ }
+    return model ? `${fw} (${model})` : fw;
+  } catch (e) { return "not reported (older firmware)"; }
+}
+
 async function connect() {
   if (!navigator.bluetooth) { toast("Web Bluetooth not supported in this browser", true); return; }
   const btn = $("connBtn");
   try {
     btn.classList.add("busy"); $("connLabel").textContent = "Scanning…";
-    device = await navigator.bluetooth.requestDevice({ filters: [{ name: "PuttTempo" }], optionalServices: [SVC] });
+    device = await navigator.bluetooth.requestDevice({ filters: [{ name: "PuttTempo" }], optionalServices: [SVC, "device_information"] });
     device.addEventListener("gattserverdisconnected", onDisconnect);
     $("connLabel").textContent = "Connecting…";
     server = await device.gatt.connect();
@@ -674,6 +760,8 @@ async function connect() {
         // An optional characteristic missing means older firmware, not an incompatible device.
         if (!OPTIONAL_CH.has(uuid)) throw e;
         if (uuid === CH.flip) { flipSupported = false; $("flip").disabled = true; $("flip").title = "This stick's firmware predates the reverse setting"; }
+        if (uuid === CH.through) { throughSupported = false; $("through").disabled = true; $("through").title = "This stick's firmware predates the through-swing setting"; }
+        if (uuid === CH.tail) { tailSupported = false; $("tail").disabled = true; $("tail").title = "This stick's firmware predates the tail setting"; }
       }
     }
     connected = true;
@@ -692,6 +780,11 @@ async function connect() {
     globals.hold = await readU(CH.hold, true);
     globals.rest = await readU(CH.rest, true);
     globals.flip = flipSupported ? await readU(CH.flip, false) : 0;
+    // A stick without the setting draws its fixed legacy tail, so preview that.
+    globals.tail = tailSupported ? await readU(CH.tail, false) : LEGACY_TAIL;
+    if (throughSupported) globals.through = await readU(CH.through, false);
+    $("fwVer").textContent = await readFirmware();
+    $("fwLine").hidden = false;
     setMode(mode);
     refreshReadouts();
     setRun(1);
@@ -703,8 +796,11 @@ async function connect() {
 }
 
 function onDisconnect() {
-  connected = false; chars = {}; flipSupported = true;
+  connected = false; chars = {}; flipSupported = true; tailSupported = true;
   $("flip").disabled = false; $("flip").title = "";
+  $("tail").disabled = false; $("tail").title = "";
+  throughSupported = true; $("through").disabled = false; $("through").title = "";
+  $("fwLine").hidden = true;
   $("connBtn").classList.remove("connected"); $("connLabel").textContent = "Connect";
   toast("Disconnected", true);
 }

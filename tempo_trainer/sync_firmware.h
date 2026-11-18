@@ -22,11 +22,17 @@ struct __attribute__((packed)) SyncBeacon {
   uint16_t getReadyMs;      //   mode / get-ready / hold / rest all feed positionAt/cycleDuration (§7)
   uint16_t holdMs;
   uint16_t restMs;
+  uint8_t  throughMode;     //   through-swing style feeds positionAt/cycleDuration too (beacon v3)
   uint8_t  brightness;      // cosmetic global — applied immediately by a follower (§7)
   uint8_t  railsLit;        // cosmetic global — applied immediately
+  uint8_t  tailLen;         // cosmetic global — comet tail length, applied immediately (beacon v2)
   uint8_t  authTag[8];      // keyed MAC over preceding bytes (§4.2.1)
 };
 static const uint8_t BEACON_FLAG_DISBAND = 0x01;
+// Bump whenever the layout above changes. A follower drops any other version, so sticks on
+// different firmware refuse to pair (the follower reverts to standalone after T_JOIN) instead of
+// rendering from misread fields. v2 added tailLen; v3 added throughMode.
+static const uint8_t BEACON_VERSION = 3;
 // The wire format must be byte-identical across BOTH builds (dig2go ↔ generic ESP32) — the struct has
 // no board-conditional fields, so it is; this guards the ESP-NOW payload limit and future edits.
 static_assert(sizeof(SyncBeacon) <= 250, "SyncBeacon exceeds the ESP-NOW 250-byte payload limit");
@@ -36,8 +42,9 @@ static_assert(sizeof(SyncBeacon) <= 250, "SyncBeacon exceeds the ESP-NOW 250-byt
 struct FollowerPub {
   int64_t epochUs, offsetUs;
   Profile params;
-  uint8_t control, mode, brightness, railsLit;
+  uint8_t control, mode, brightness, railsLit, tailLen;
   uint16_t getReadyMs, holdMs, restMs;
+  uint8_t throughMode;
 };
 
 extern volatile SyncRole syncRole;

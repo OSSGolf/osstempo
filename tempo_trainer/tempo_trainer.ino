@@ -58,9 +58,32 @@
   #define LED_PIN       16       // Dig2go level-shifted LED-data terminal (GPIO5 is the Dig2go's IR pin)
   #define LED_POWER_PIN 12       // Dig2go LED-power relay enable: the board CUTS 5V to the strip
   #define LED_POWER_ON  HIGH     // until this is asserted. Active-high; flip to LOW if the strip stays dark.
+  #define FLIP_DEFAULT   0       // first-boot orientation (…0014); only used until a value is saved to NVS
 #elif defined(BOARD_DIY_ESP32)
   #define LED_PIN        5       // GPIO5 -> 470ohm -> strip DIN. No power relay: strip 5V is always live.
+  #define FLIP_DEFAULT   1       // the carrier feeds the strip from the other end, so a fresh stick runs mirrored
 #endif
+
+// ---------- Firmware identity (readable over BLE) ----------
+// Published through the standard Device Information Service (0x180A) so any BLE client -- the iOS
+// app, nRF Connect, a script -- can tell which build a stick is running without a USB cable:
+//   Firmware Revision (0x2A26) = "<git sha>[-dirty] <compile date time>"
+//   Model Number      (0x2A24) = the board build
+// tools/flash.sh writes the git half into build_version.h (untracked) before each compile. A
+// build that bypasses the script still reports its compile time, with "unversioned" for the sha.
+#if __has_include("build_version.h")
+  #include "build_version.h"
+#endif
+#ifndef FW_GIT
+  #define FW_GIT "unversioned"
+#endif
+#define FW_VERSION FW_GIT " " __DATE__ " " __TIME__
+#if defined(BOARD_DIG2GO)
+  #define FW_MODEL "dig2go"
+#else
+  #define FW_MODEL "generic-esp32"
+#endif
+
 #define NUM_LEDS    144                // 144 LEDs/m on a 1 m strip (~0.69 cm/LED)
 #define BRIGHTNESS_DEFAULT 40          // 0-255 (lowered per user feedback; was 120, too bright)
 #define LED_TYPE    WS2812B
@@ -93,7 +116,8 @@ CRGB physLeds[NUM_LEDS];                  // PHYSICAL frame handed to FastLED (b
 // sync_firmware.ino). Written from the BLE task (core 0), read by the renderer (core 1): a single
 // byte, atomic on Xtensa, feeding no multi-word state -- so `volatile` + a local snapshot is the
 // same discipline brightness/railsLit/control already use, and needs no mutex.
-volatile uint8_t flipped = 0;
+// The first-boot value is per board (FLIP_DEFAULT); a saved NVS value always wins over it.
+volatile uint8_t flipped = FLIP_DEFAULT;
 
 // (clearLeds() / showFrame() are defined just below the RefDot declaration: the Arduino IDE injects
 // its auto-generated prototypes ahead of the FIRST function definition in the sketch, so defining a
@@ -114,14 +138,17 @@ struct Profile {
   uint8_t  reachLeds;     // amber (top-of-backswing) reach in LEDs from center, 1..HALF
   uint16_t topHoldMs;     // pause at the top of backswing (full-swing transition; 0 for putt)
   uint8_t  release;       // 0 = free pendulum .. 100 = late lag release (drop-to-impact shape)
-  uint16_t followMs;      // impact -> finish (follow-through duration, separate from tempo)
+  uint16_t followMs;      // follow-through on/off: 0 = none, else it runs at impact speed (see followDurMs)
   uint8_t  aim2Enabled;   // FULL only: show the purple weight-shift dot (0/1)
   uint8_t  aim2Led;       // FULL only: absolute LED index of the purple dot (1..NUM_LEDS-2)
   uint8_t  aim2When;      // FULL only: 0 address / 1 top (default) / 2 downswing / 3 impact
 };                        // NOTE: append new fields at the END so old NVS blobs still load.
 
 Profile profiles[2] = {
-  /* PUTT */ { 700, 350, 58, 0,   0,  350,  0, 70, 1 },   // 2:1 to impact, pendular, 350ms follow
+  // 2:1 at the tour-average backswing (~650 ms). Reach 23 LEDs (16 cm) is the suggested backswing
+  // for a 5 ft putt on a medium green at this tempo (Grober: head speed = length / (0.62 * downswing);
+  // the iOS app's PuttDistance computes the same number). followMs is only "on".
+  /* PUTT */ { 650, 325, 23, 0,   0,  350,  0, 70, 1 },
   /* FULL */ { 900, 300, 60, 150, 55, 300,  0, 70, 1 },   // 3:1 to impact, lag, 300ms follow; aim2 off, 2 LEDs follow-side, at top
 };
 
@@ -137,8 +164,18 @@ volatile uint16_t holdMs     = 600;              // hold at the finish
 volatile uint16_t restMs     = 3000;             // dark rest gap between reps
 volatile uint8_t  railsLit   = 1;                // keep impact/backswing/extent dots lit during the stroke
 
-// Comet look
-const uint8_t TAIL = 6;                           // fading tail length in LEDs
+// Through-swing style (…0016, global, persisted, KINEMATIC so it is staged and beacon-carried).
+// Both styles are identical up to impact and leave the ball at exactly the speed the downswing
+// arrived with; they differ only in what happens after:
+//   THROUGH_PENDULUM  the comet decelerates like a pendulum to rest at the finish
+//   THROUGH_CONSTANT  the comet holds impact speed all the way to the finish (no deceleration)
+enum ThroughMode : uint8_t { THROUGH_PENDULUM = 0, THROUGH_CONSTANT = 1 };
+volatile uint8_t  throughMode = THROUGH_CONSTANT;
+
+// Comet look. The tail is a setting (…0015): 0 = no tail, just the 2-LED head; up to TAIL_MAX.
+const uint8_t TAIL_MAX     = 20;
+const uint8_t TAIL_DEFAULT = 0;                   // first-boot value: a crisp dot with no trail
+volatile uint8_t tailLen   = TAIL_DEFAULT;        // fading tail length in LEDs (global, persisted, beacon-carried)
 const CRGB    DOT_COLOR    = CRGB(255, 255, 255); // the moving comet (white)
 const CRGB    BALL_COLOR   = CRGB(0, 120, 0);     // center / ball / impact (green)
 const CRGB    TARGET_COLOR = CRGB(255, 90, 0);    // top-of-backswing aim point (amber)
@@ -197,8 +234,8 @@ static void saveFlipNow() {
 }
 
 // Orientation feedback window. In idle the strip shows a single dim LED at the centre, and in the
-// dark rest gap it shows nothing at all -- so a flip in those states moves one pixel by 6.9 mm, or
-// nothing, and the user taps again thinking the toggle is broken. For a short window after a flip
+// rest gap it shows nothing at all when the rails are off -- so a flip in those states moves one
+// pixel by 6.9 mm, or nothing, and the user taps again thinking the toggle is broken. For a short window after a flip
 // write, those two states paint the mode's static dot map instead: the amber top-of-backswing dot
 // jumping to the other side of the green ball is an immediate, unambiguous answer to "which way
 // does the stick run now?". While a stroke is actually rendering, the moving comet already answers,
@@ -237,6 +274,8 @@ static inline float flipConfirmTag() { return flipped ? -3.0f : -4.0f; }
 //  0012  follower status  bytes    read + NOTIFY (multi-stick set health)  runtime
 //  0013  session command  bytes    write, opcode-tagged (form/join/disband) runtime
 //  0014  flip             uint8    0 normal / 1 mirrored end-for-end    global, device-local
+//  0015  comet tail       uint8    0 none .. 20 LEDs of fading trail    global
+//  0016  through-swing    uint8    0 pendulum (decelerates) / 1 constant global
 #define SVC_UUID        "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 #define CH_BACKSWING    "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 #define CH_DOWNSWING    "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
@@ -257,6 +296,8 @@ static inline float flipConfirmTag() { return flipped ? -3.0f : -4.0f; }
 #define CH_FOLLOWERSTAT "6e400012-b5a3-f393-e0a9-e50e24dcca9e"   // follower-status: read + NOTIFY (§12)
 #define CH_SESSIONCMD   "6e400013-b5a3-f393-e0a9-e50e24dcca9e"   // session-command: write, opcode-tagged (§6)
 #define CH_FLIP         "6e400014-b5a3-f393-e0a9-e50e24dcca9e"   // 180 flip: strip orientation (global)
+#define CH_TAIL         "6e400015-b5a3-f393-e0a9-e50e24dcca9e"   // comet tail length in LEDs (global)
+#define CH_THROUGH      "6e400016-b5a3-f393-e0a9-e50e24dcca9e"   // through-swing style: pendulum / constant speed (global)
 
 // Per-mode characteristic handles, so a mode switch can refresh their stored
 // values to the newly-active profile (lets a BLE client read correct values).
@@ -413,6 +454,7 @@ struct PendingKin {
   uint8_t  reachLeds = 0, release = 0, aim2When = 0;
   uint8_t  modeVal = 0;
   uint16_t getReadyVal = 0, holdVal = 0, restVal = 0;
+  uint8_t  throughVal = 0;
 };
 static PendingKin pendingKin;
 static portMUX_TYPE pendingMux = portMUX_INITIALIZER_UNLOCKED;
@@ -434,6 +476,7 @@ static void pendingSeed() {
   pendingKin.getReadyVal = getReadyMs;
   pendingKin.holdVal     = holdMs;
   pendingKin.restVal     = restMs;
+  pendingKin.throughVal  = throughMode;
   pendingKin.dirty       = true;
 }
 
@@ -453,6 +496,7 @@ static void pendingMerge() {
     getReadyMs = pendingKin.getReadyVal;
     holdMs     = pendingKin.holdVal;
     restMs     = pendingKin.restVal;
+    throughMode = pendingKin.throughVal;
     pendingKin.dirty = false;
   }
   portEXIT_CRITICAL(&pendingMux);
@@ -504,11 +548,13 @@ class CharCB : public BLECharacteristicCallbacks {
                                     chSetU8(c, m); }
     else if (uuid == CH_GETREADY) { uint16_t val = constrain(u16(), 0, 10000); stageU16(getReadyMs, pendingKin.getReadyVal, val); chSetU16(c, val); }
     else if (uuid == CH_HOLD)     { uint16_t val = constrain(u16(), 0, 10000); stageU16(holdMs, pendingKin.holdVal, val); chSetU16(c, val); }
+    else if (uuid == CH_THROUGH)  { uint8_t val = min((int)(uint8_t)v[0], 1); stageU8(throughMode, pendingKin.throughVal, val); chSetU8(c, val); }
     else if (uuid == CH_REST)     { uint16_t val = constrain(u16(), 0, 20000); stageU16(restMs, pendingKin.restVal, val); chSetU16(c, val); }
     else if (uuid == CH_AIM2WHEN) { uint8_t w = min((int)(uint8_t)v[0], 3);    stageU8(profiles[mode].aim2When, pendingKin.aim2When, w); chSetU8(c, w); }
     // --- cosmetic (immediate; beacon-propagated, §7) ---
     else if (uuid == CH_BRIGHTNESS){ brightness = (uint8_t)v[0]; FastLED.setBrightness(brightness); chSetU8(c, brightness); cosmetic = true; }
     else if (uuid == CH_RAILS)    { railsLit = min((int)(uint8_t)v[0], 1); chSetU8(c, railsLit); cosmetic = true; }
+    else if (uuid == CH_TAIL)     { tailLen = min((int)(uint8_t)v[0], (int)TAIL_MAX); chSetU8(c, tailLen); cosmetic = true; }
     else if (uuid == CH_AIM2EN)   { uint8_t e = min((int)(uint8_t)v[0], 1); profiles[mode].aim2Enabled = e; chSetU8(c, e); cosmetic = true; }
     else if (uuid == CH_AIM2POS)  { uint8_t pos = avoidAim2Overlap((int)(uint8_t)v[0], profiles[mode].reachLeds); profiles[mode].aim2Led = pos; chSetU8(c, pos); cosmetic = true; }
     // --- orientation (immediate, device-local; NOT beacon-carried, NOT staged) ---
@@ -550,9 +596,9 @@ void setupBLE() {
   // GATT handle budget -- the default (15) SILENTLY truncates the table after ~7 characteristics,
   // and the Arduino BLE wrapper does not check the error, so the symptom is a client discovering a
   // short table and rejecting the device as incompatible. Count it exactly whenever a char is added:
-  //   1 (service) + 19 chars x 2 + 2 CCCDs (…0006 control, …0012 follower-status) = 41.
-  // 48 reserved leaves room for 3 more characteristics before this must be raised.
-  BLEService *svc = server->createService(BLEUUID(SVC_UUID), 48);   // 19 chars (…0002-…0014) = 41 handles
+  //   1 (service) + 21 chars x 2 + 2 CCCDs (…0006 control, …0012 follower-status) = 45.
+  // 48 reserved leaves room for 1 more characteristic before this must be raised.
+  BLEService *svc = server->createService(BLEUUID(SVC_UUID), 48);   // 21 chars (…0002-…0016) = 45 handles
 
   auto mk = [&](const char *uuid, uint16_t init, bool twoByte, bool notify = false) {
     uint32_t props = BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE;
@@ -584,8 +630,19 @@ void setupBLE() {
   chFollowerStat = mk(CH_FOLLOWERSTAT, 0, false, true);   // …0012 READ + NOTIFY (follower-status)
   mk(CH_SESSIONCMD, 0, false);                            // …0013 WRITE (opcode-tagged session command)
   mk(CH_FLIP,       flipped, false);                      // …0014 strip orientation (global, device-local)
+  mk(CH_TAIL,       tailLen, false);                      // …0015 comet tail length (global)
+  mk(CH_THROUGH,    throughMode, false);                  // …0016 through-swing style (global)
 
   svc->start();
+
+  // Device Information Service: which firmware build and board this stick is (see FW_VERSION). A
+  // separate standard service, so it costs the tempo service none of its handle budget and changes
+  // nothing a client that only discovers SVC_UUID can see. Deliberately not advertised.
+  BLEService *dis = server->createService(BLEUUID((uint16_t)0x180A));
+  dis->createCharacteristic(BLEUUID((uint16_t)0x2A26), BLECharacteristic::PROPERTY_READ)->setValue(FW_VERSION);
+  dis->createCharacteristic(BLEUUID((uint16_t)0x2A24), BLECharacteristic::PROPERTY_READ)->setValue(FW_MODEL);
+  dis->start();
+
   BLEAdvertising *adv = BLEDevice::getAdvertising();
   adv->addServiceUUID(SVC_UUID);
 
@@ -612,6 +669,40 @@ float dropEase(float ph, float release01) {
   float lag      = ph * ph * ph * ph;             // back-loaded late release
   return pendular + (lag - pendular) * release01;
 }
+
+// ---------- Putting stroke: Grober's resonant pendulum ----------
+// R. D. Grober, "Resonance in Putting" (arXiv:0903.1762): the stroke of proficient putters is a
+// pendulum driven at twice its natural frequency. In phase angle th = w0*t over [0, pi] the putter's
+// displacement from the ball is proportional to
+//     X(th) = sin(th) - sin(2*th)/2
+// The top of the backswing is th = 2pi/3 (velocity zero) and impact is th = pi, which gives the
+// model's three signatures at once: backswing : downswing = 2 : 1, zero acceleration at impact (the
+// head arrives at constant speed), and a takeaway that starts from rest rather than snatching.
+// Our backswing and downswing times are set independently, so each segment maps its own 0..1 phase
+// onto its span of th; velocity is zero at the top either way, so the join stays smooth.
+static const float GROBER_TOP = 2.0f * PI / 3.0f;                 // th at the top of the backswing
+static const float GROBER_AMP = 1.2990381f;                       // X(GROBER_TOP) = 3*sqrt(3)/4
+// d(progress)/d(phase) at impact for a pure-pendulum downswing: (pi/3) * X'(pi) / AMP, X'(pi) = 2.
+// Impact speed is this many times the downswing's average speed (1.61).
+static const float GROBER_IMPACT_SLOPE = (2.0f * PI / 3.0f) / GROBER_AMP;
+static inline float groberX(float th) { return sinf(th) - 0.5f * sinf(2.0f * th); }
+
+// Backswing progress 0..1: from rest at the ball, peaking ~63% of the way through, to rest at the top.
+float puttBackEase(float ph) { return groberX(ph * GROBER_TOP) / GROBER_AMP; }
+
+// Downswing progress 0..1 (top -> impact). release 0 is Grober's curve; release 1 is the same
+// back-loaded late "lag" snap dropEase uses. Both start at rest and peak at impact.
+float puttDownEase(float ph, float release01) {
+  float pendular = 1.0f - groberX(GROBER_TOP + ph * (PI - GROBER_TOP)) / GROBER_AMP;
+  float lag      = ph * ph * ph * ph;
+  return pendular + (lag - pendular) * release01;
+}
+
+// Through-swing progress 0..1 (impact -> finish) and how long it lasts as a multiple of the time it
+// would take at impact speed. Pendulum: a quarter sine, which leaves at full speed and comes to
+// rest, so it needs pi/2 times as long to cover the same distance. Constant: a straight line.
+float throughEase(float ph)   { return throughMode == THROUGH_PENDULUM ? sinf(ph * PI / 2.0f) : ph; }
+float throughStretch()        { return throughMode == THROUGH_PENDULUM ? PI / 2.0f : 1.0f; }
 
 // ---------- Static-marker rendering (preview / dot maps) ----------
 // (The blocking comet renderers — addComet/drawComet/drawCometRefs and the runStroke* stroke drivers —
@@ -643,6 +734,8 @@ void loadParams() {
   holdMs     = prefs.getUShort("hold",  holdMs);
   restMs     = prefs.getUShort("rest",  restMs);
   railsLit   = prefs.getUChar ("rails", railsLit);
+  tailLen    = prefs.getUChar ("tail",  tailLen);
+  throughMode = prefs.getUChar("thru",  throughMode);
   flipped    = prefs.getUChar ("flip",  flipped);
   prefs.getBytes("prof0", &profiles[0], sizeof(Profile));   // unchanged if key absent
   prefs.getBytes("prof1", &profiles[1], sizeof(Profile));
@@ -658,6 +751,8 @@ void loadParams() {
   holdMs     = constrain(holdMs, 0, 10000);
   restMs     = constrain(restMs, 0, 20000);
   railsLit   = constrain((int)railsLit, 0, 1);
+  tailLen    = constrain((int)tailLen, 0, (int)TAIL_MAX);
+  throughMode = constrain((int)throughMode, 0, 1);
   flipped    = constrain((int)flipped, 0, 1);
   for (int m = 0; m < 2; m++) {
     profiles[m].backswingMs = constrain(profiles[m].backswingMs, 100, 5000);
@@ -680,6 +775,8 @@ void saveParams() {
   prefs.putUShort("hold",  holdMs);
   prefs.putUShort("rest",  restMs);
   prefs.putUChar ("rails", railsLit);
+  prefs.putUChar ("tail",  tailLen);
+  prefs.putUChar ("thru",  throughMode);
   prefs.putUChar ("flip",  flipped);
   prefs.putBytes("prof0", &profiles[0], sizeof(Profile));
   prefs.putBytes("prof1", &profiles[1], sizeof(Profile));
@@ -697,6 +794,7 @@ void setup() {
   FastLED.setBrightness(brightness);
   clearLeds(); showFrame();
   setupBLE();
+  Serial.println("Firmware " FW_VERSION " (" FW_MODEL ")");
   Serial.println("Tempo Trainer ready - pair over BLE");
 }
 
@@ -707,9 +805,32 @@ void setup() {
 //  NO millis(). `positionAt` is golden-parity-verified (firmware_tests/).
 // ============================================================================
 
+// Follow-through duration (ms). The comet ALWAYS leaves impact at exactly the speed it arrived with
+// -- no hitch at the ball. The finish point is fixed (putt: -reach; full: the far strip end), and in
+// both modes it is the same distance from the ball as the final downswing segment covered, so the
+// time follows from the downswing rather than being a setting:
+//   speed at impact = distance * slope / downSegMs,   slope = d(downswing progress)/d(phase) at impact
+//   constant-speed through-swing:  followDur = downSegMs / slope
+//   pendulum through-swing:        followDur = downSegMs / slope * pi/2   (it slows to rest)
+// slope is 1.61 for the putt (Grober) and pi/2 for the full swing, blending to 4 at full lag release.
+// `followMs` (…000d) is therefore only the on/off: 0 = no follow-through.
+uint32_t followDurMs(const Profile &p) {
+  if (p.followMs == 0) return 0;
+  uint32_t downSeg = p.downswingMs;
+  float base = GROBER_IMPACT_SLOPE;
+  if (mode == MODE_FULL) {              // only the last leg (far end -> ball) arrives at impact
+    float dOut = (NUM_LEDS - 1) - CENTER, dIn = (NUM_LEDS - 1) - (CENTER + p.reachLeds);
+    downSeg = p.downswingMs - (uint32_t)(p.downswingMs * (dIn / (dIn + dOut)));
+    base = PI / 2.0f;
+  }
+  float r = p.release / 100.0f;
+  uint32_t d = (uint32_t)(downSeg / (base + (4.0f - base) * r) * throughStretch());
+  return d ? d : 1;
+}
+
 // Total rendered cycle time (ms), excluding the dark rest gap (handled by the loop epoch).
 uint32_t cycleDuration(const Profile &p) {
-  return (uint32_t)getReadyMs + p.backswingMs + p.topHoldMs + p.downswingMs + p.followMs + holdMs;
+  return (uint32_t)getReadyMs + p.backswingMs + p.topHoldMs + p.downswingMs + followDurMs(p) + holdMs;
 }
 
 // Shared frame grid (plan §3.4): quantize cycle-time to FRAME_MS so all nodes compute the SAME frame
@@ -717,10 +838,13 @@ uint32_t cycleDuration(const Profile &p) {
 static const float FRAME_MS = 8.0f;                       // 125 Hz grid; tightenable toward ~6 ms
 static inline float gridQuantize(float u) { return floorf(u / FRAME_MS) * FRAME_MS; }
 
-// Head position (fractional LED index) at cycle-time u. Ported verbatim from the pre-refactor
-// segment math (runStroke / runStrokeFull) and verified in firmware_tests/golden_kinematics.c.
+// Head position (fractional LED index) at cycle-time u. The putt is Grober's resonant pendulum up to
+// impact (puttBackEase / puttDownEase); the full swing keeps the pre-refactor segment math
+// (runStrokeFull). Both leave impact at arrival speed and follow through per throughMode (see
+// followDurMs). Verified in firmware_tests/golden_kinematics.c.
 float positionAt(float u, const Profile &p) {
   float amp = p.reachLeds;
+  const uint32_t fd = followDurMs(p);
   if (mode == MODE_FULL) {
     float center = CENTER, backRed = NUM_LEDS - 1, backAmber = CENTER + amp, folRed = 0.0f;
     float dOut = backRed - center, dIn = backRed - backAmber;
@@ -732,14 +856,14 @@ float positionAt(float u, const Profile &p) {
     if (u < p.topHoldMs) return backAmber;                                               u -= p.topHoldMs;
     if (u < dBack) { float ph = u / (float)dBack; return backAmber + (backRed - backAmber)* easeInOut(ph); } u -= dBack;
     if (u < dDown) { float ph = u / (float)dDown; return backRed   + (center - backRed)   * dropEase(ph, p.release / 100.0f); } u -= dDown;
-    if (u < p.followMs) { float ph = u / (float)p.followMs; return center + (folRed - center) * easeOut(ph); }
-    return (p.followMs > 0 ? folRed : center);
+    if (u < fd) { float ph = u / (float)fd; return center + (folRed - center) * throughEase(ph); }
+    return (fd > 0 ? folRed : center);
   } else {
     if (u < getReadyMs) return CENTER;                                                   u -= getReadyMs;
-    if (u < p.backswingMs) { float ph = u / (float)p.backswingMs; return CENTER + amp * sinf(ph * PI / 2.0f); } u -= p.backswingMs;
-    if (u < p.downswingMs) { float ph = u / (float)p.downswingMs; return CENTER + amp * (1.0f - dropEase(ph, p.release / 100.0f)); } u -= p.downswingMs;
-    if (u < p.followMs)    { float ph = u / (float)p.followMs;    return CENTER - amp * easeOut(ph); }
-    return CENTER + (p.followMs > 0 ? -amp : 0.0f);
+    if (u < p.backswingMs) { float ph = u / (float)p.backswingMs; return CENTER + amp * puttBackEase(ph); } u -= p.backswingMs;
+    if (u < p.downswingMs) { float ph = u / (float)p.downswingMs; return CENTER + amp * (1.0f - puttDownEase(ph, p.release / 100.0f)); } u -= p.downswingMs;
+    if (u < fd)            { float ph = u / (float)fd;            return CENTER - amp * throughEase(ph); }
+    return CENTER + (fd > 0 ? -amp : 0.0f);
   }
 }
 
@@ -757,13 +881,13 @@ int strokeDirAt(float u, const Profile &p) {
     if (u < p.topHoldMs) return 0;     u -= p.topHoldMs;
     if (u < dBack) return 1;           u -= dBack;
     if (u < dDown) return -1;          u -= dDown;
-    if (u < p.followMs) return -1;
+    if (u < followDurMs(p)) return -1;
     return 0;
   } else {
     if (u < getReadyMs) return 0;      u -= getReadyMs;
     if (u < p.backswingMs) return 1;   u -= p.backswingMs;
     if (u < p.downswingMs) return -1;  u -= p.downswingMs;
-    if (u < p.followMs) return -1;
+    if (u < followDurMs(p)) return -1;
     return 0;
   }
 }
@@ -787,26 +911,43 @@ static bool aim2LitAt(float u, const Profile &p) {
 static void drawCometAnalytic(float pos, int dir, int loIdx, int hiIdx) {
   if (dir == 0) dir = 1;                                        // still: default trail orientation
   int base = (int)floorf(pos);
-  for (int i = -1; i <= TAIL; i++) {                            // i=-1 leading pixel, i>0 trailing tail
+  const int tail = tailLen;                                     // snapshot once: core 0 can change it mid-frame
+  for (int i = -1; i <= tail; i++) {                            // i=-1 leading pixel, i>0 trailing tail
     int idx = base - dir * i;
     if (idx < loIdx || idx > hiIdx || idx < 0 || idx >= NUM_LEDS) continue;
-    uint8_t b = (i <= 0) ? 255 : (uint8_t)(255.0f * (1.0f - (float)i / (TAIL + 1)));
+    uint8_t b = (i <= 0) ? 255 : (uint8_t)(255.0f * (1.0f - (float)i / (tail + 1)));
     leds[idx] += CRGB(b, b, b);
   }
 }
 
+// The "rails": green ball, amber top-of-backswing and (full mode) both red extents. Painted into
+// the logical frame only -- the caller clears first and latches after.
+static void paintRails(const Profile &p) {
+  int centerIdx = (int)roundf(CENTER);
+  if (centerIdx >= 0 && centerIdx < NUM_LEDS) leds[centerIdx] = BALL_COLOR;
+  int amberIdx = (int)roundf(CENTER + p.reachLeds);
+  if (amberIdx >= 0 && amberIdx < NUM_LEDS) leds[amberIdx] = TARGET_COLOR;
+  if (mode == MODE_FULL) { leds[NUM_LEDS - 1] = RED_COLOR; leds[0] = RED_COLOR; }
+}
+
+// The rest gap between reps. With the rails on, the aim dots stay lit through the gap so the
+// stick never goes fully dark between strokes and you can set up against them; with the rails
+// off it is dark, as it always was. Static, so callers paint it once on entry (see restGapTag).
+void renderRestGap() {
+  clearLeds();
+  if (railsLit) paintRails(profiles[mode]);
+  showFrame();
+}
+// Frame-skip sentinel for the rest gap, tagged with what was painted so a rails toggle or a
+// brightness change that lands inside the gap still repaints: -2 dark, -(1000 + brightness) rails.
+static inline float restGapTag() { return railsLit ? -(1000.0f + brightness) : -2.0f; }
+
 // Draw the whole frame for cycle-time u. Full clear + repaint (no temporal state).
 void renderFrameAt(float u) {
   const Profile &p = profiles[mode];
-  float amp = p.reachLeds;
   int centerIdx = (int)roundf(CENTER);
   clearLeds();
-  if (railsLit) {
-    if (centerIdx >= 0 && centerIdx < NUM_LEDS) leds[centerIdx] = BALL_COLOR;
-    int amberIdx = (int)roundf(CENTER + amp);
-    if (amberIdx >= 0 && amberIdx < NUM_LEDS) leds[amberIdx] = TARGET_COLOR;
-    if (mode == MODE_FULL) { leds[NUM_LEDS - 1] = RED_COLOR; leds[0] = RED_COLOR; }
-  }
+  if (railsLit) paintRails(p);
   if (mode == MODE_FULL && p.aim2Enabled && aim2LitAt(u, p)) {
     int a = constrain((int)p.aim2Led, 1, NUM_LEDS - 2);
     leds[a] = AIM2_COLOR;
@@ -847,8 +988,8 @@ void renderDotMap() {
 // Cycle epoch for the non-blocking render loop (esp_timer µs at the current cycle's u=0).
 static int64_t cycleEpochUs = 0;
 // Frame-skip: the last quantized u rendered. Negative values are sentinels — -1 nothing painted,
-// -2 rest gap blanked, -3/-4 the orientation-confirm dot map, tagged with the orientation it was
-// painted at so a second flip inside the window still repaints. File scope (not a function static)
+// -2 / <= -1000 the rest gap (dark / rails lit, see restGapTag), -3/-4 the orientation-confirm dot map,
+// tagged with the orientation it was painted at so a second flip inside the window still repaints. File scope (not a function static)
 // so anything that paints the strip out of band can invalidate it.
 static float lastFrameU = -1.0f;
 
@@ -895,21 +1036,29 @@ void loop() {
         cycleEpochUs += (int64_t)total * 1000;                            // one cycle (keep the grid; §4.5, #11)
         if (now - cycleEpochUs > (int64_t)total * 2000) cycleEpochUs = now;   // resync if we fell >1 cycle behind
         pendingMerge();                                                   // §7: apply staged kinematic edits at the boundary
-        if (syncRole == ROLE_LEADER) leaderMarkEvent();                   // #9: merged params + new epoch → tell followers now
+        // #9: merged params + new epoch → tell followers now. Publish the epoch HERE, with the event:
+        // the burst goes out at the top of the next loop() pass, before the per-tick assignment above
+        // runs again, so without this it carried the PREVIOUS cycle's epoch and followers only learned
+        // the new one from the next keepalive -- sitting in their rest frame for up to a quarter of a
+        // second into every rep, which swallowed the start of their first get-ready pulse.
+        if (syncRole == ROLE_LEADER) { leaderEpochUs = cycleEpochUs; leaderMarkEvent(); }
         renderFrameAt(0); lastFrameU = 0.0f;
       } else { control = 0; renderPrevControl = 0xFF; notifyControl();    // single done → idle
                if (syncRole == ROLE_LEADER) leaderMarkEvent(); }          // #11: burst the idle transition to followers
     } else if (u >= cd) {
-      // Dark rest gap. The dot map is static, so paint it ONCE on entry rather than every 4 ms tick
+      // Rest gap. Whatever it shows is static, so paint it ONCE on entry rather than every 4 ms tick
       // — a 144-LED latch takes ~4.3 ms, so repainting at loop rate would latch back to back. The
       // sentinel carries the orientation so a second flip inside the window still forces a repaint.
       if (flipConfirmActive()) {
         const float tag = flipConfirmTag();
         if (lastFrameU != tag) { lastFrameU = tag; renderDotMap(); }                      // orientation answer
-      } else if (lastFrameU != -2.0f) { lastFrameU = -2.0f; clearLeds(); showFrame(); }   // blank once
-      // Commit a pending orientation AFTER the paint, so the NVS stall lands on an already-dark
-      // strip. This is the only safe point that recurs while the stick keeps looping (see
-      // saveFlipNow); with restMs == 0 there is no gap and the commit waits for idle.
+      } else {
+        const float tag = restGapTag();
+        if (lastFrameU != tag) { lastFrameU = tag; renderRestGap(); }                     // rails or dark, once
+      }
+      // Commit a pending orientation AFTER the paint, so the NVS stall lands on a strip that is
+      // already holding a static frame. This is the only safe point that recurs while the stick
+      // keeps looping (see saveFlipNow); with restMs == 0 there is no gap and the commit waits for idle.
       if (flipDirty) saveFlipNow();
     } else {
       float qu = gridQuantize(u);                          // shared frame grid (§3.4); skip duplicate frames

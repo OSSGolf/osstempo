@@ -229,7 +229,7 @@ static void onSyncRecv(const esp_now_recv_info_t *info, const uint8_t *data, int
   }
   if (syncRole != ROLE_FOLLOWER || len < (int)sizeof(SyncBeacon)) return;
   SyncBeacon b; memcpy(&b, data, sizeof(b));
-  if (b.magic[0] != 'O' || b.magic[1] != 'T' || b.sessionId != sessionId) return;
+  if (b.magic[0] != 'O' || b.magic[1] != 'T' || b.version != BEACON_VERSION || b.sessionId != sessionId) return;
   uint8_t tag[8]; computeAuthTag(b, tag);                 // spoof/replay: drop any beacon whose MAC fails (§4.2.1)
   if (memcmp(tag, b.authTag, 8) != 0) return;
   if (b.seq && b.seq < followerLastSeq && (followerLastSeq - b.seq) < 256) return;   // #4: small replay window
@@ -252,8 +252,8 @@ static void onSyncRecv(const esp_now_recv_info_t *info, const uint8_t *data, int
   v.params     = b.active;
   v.control    = b.control;
   v.mode       = b.mode;                                  // #2: adopt the leader's mode/getReady/hold/rest
-  v.getReadyMs = b.getReadyMs; v.holdMs = b.holdMs; v.restMs = b.restMs;
-  v.brightness = b.brightness; v.railsLit = b.railsLit;
+  v.getReadyMs = b.getReadyMs; v.holdMs = b.holdMs; v.restMs = b.restMs; v.throughMode = b.throughMode;
+  v.brightness = b.brightness; v.railsLit = b.railsLit; v.tailLen = b.tailLen;
   publishFollower(v);
   lastBeaconRxUs = rx;
   followerEverHeard = true;
@@ -314,8 +314,10 @@ static bool  followerKinInit = false;
 static void applyFollowerParamsFrom(const FollowerPub &fp, float u) {
   if (brightness != fp.brightness) { brightness = fp.brightness; FastLED.setBrightness(brightness); }
   railsLit = fp.railsLit;
+  tailLen  = fp.tailLen;
   if (!followerKinInit || u < followerLastU) {                 // first synced frame, or a cycle wrap
     mode = fp.mode; getReadyMs = fp.getReadyMs; holdMs = fp.holdMs; restMs = fp.restMs;
+    throughMode = fp.throughMode;
     profiles[mode] = fp.params;                                // whole timeline (kinematic + aim2) at boundary
     followerKinInit = true;
   } else {
@@ -340,7 +342,7 @@ void syncDrainDeferred() {
 
 // One follower render tick: send hello/ping, snapshot the shared state (seqlock), render off the
 // shared clock. Called from loop() (core 1). Stateless renderer ⇒ agree on u ⇒ identical frame (§3.4).
-static float followerLastFrameU = -1.0f;                      // frame-skip: last quantized u rendered (-2 = blanked)
+static float followerLastFrameU = -1.0f;                      // frame-skip: last quantized u rendered (-2 / <= -1000 = rest gap)
 
 // Force the follower render path to repaint on its next tick. The main tab's invalidateFrameSkip()
 // calls this alongside its own sentinel, so neither tab reaches into the other's private state.
@@ -367,7 +369,10 @@ void followerRenderStep() {
     if (u < cycleDuration(profiles[mode])) {
       float qu = gridQuantize(u);                             // shared frame grid (§3.4); skip duplicate frames
       if (qu != followerLastFrameU) { followerLastFrameU = qu; renderFrameAt(qu); }
-    } else if (followerLastFrameU != -2.0f) { followerLastFrameU = -2.0f; clearLeds(); showFrame(); }   // rest/idle gap
+    } else {                                                  // rest gap: same frame the leader holds
+      const float tag = restGapTag();
+      if (followerLastFrameU != tag) { followerLastFrameU = tag; renderRestGap(); }
+    }
   } else {
     followerLastFrameU = -1.0f;
     fadeToBlackBy(leds, NUM_LEDS, 40);
@@ -381,7 +386,7 @@ void followerRenderStep() {
 // =====================================================================================
 static void fillBeacon(SyncBeacon &b, uint8_t flags) {
   memset(&b, 0, sizeof(b));                              // zero Profile padding → deterministic HMAC (#12)
-  b.magic[0] = 'O'; b.magic[1] = 'T'; b.version = 1;
+  b.magic[0] = 'O'; b.magic[1] = 'T'; b.version = BEACON_VERSION;
   b.sessionId = sessionId; b.flags = flags;
   b.seq = ++beaconSeq;
   b.txEspTimer = esp_timer_get_time();
@@ -389,7 +394,8 @@ static void fillBeacon(SyncBeacon &b, uint8_t flags) {
   b.epochEspTimer = leaderEpochUs;
   b.active = profiles[mode];
   b.mode = mode; b.getReadyMs = getReadyMs; b.holdMs = holdMs; b.restMs = restMs;   // KINEMATIC globals (§7)
-  b.brightness = brightness; b.railsLit = railsLit;      // cosmetic globals (§7)
+  b.throughMode = throughMode;
+  b.brightness = brightness; b.railsLit = railsLit; b.tailLen = tailLen;   // cosmetic globals (§7)
   computeAuthTag(b, b.authTag);                          // keyed MAC over all preceding bytes (§4.2.1)
 }
 

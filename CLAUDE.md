@@ -32,10 +32,13 @@ sh tools/flash.sh --loop                    # flash a batch, swapping boards bet
 
 ## BLE reference
 - Device name `PuttTempo`; service `6e400001-b5a3-f393-e0a9-e50e24dcca9e`.
-- **17 tunable characteristics, tails `0002`–`0011` plus `0014`** (see README GATT table); `0012`/`0013` are the multi-stick status/command channels, not tunables. Scan by **service UUID** (most reliable on iOS); the name is in the scan response. `control` (`0006`) supports NOTIFY.
+- **19 tunable characteristics, tails `0002`–`0011` plus `0014`–`0016`** (see README GATT table); `0012`/`0013` are the multi-stick status/command channels, not tunables. Scan by **service UUID** (most reliable on iOS); the name is in the scan response. `control` (`0006`) supports NOTIFY.
 - Per-mode params apply to the active mode; writing `mode` (`000a`) refreshes the per-mode characteristic values.
 - `000e railsLit` (global) keeps the impact/aim dots lit; `get-ready ms` is a countdown of `round(ms/1000)` smooth impact pulses; the comet is bounded by the impact/aim markers per segment.
 - `0014 flip` (global, device-local, persisted) mirrors the finished frame end-for-end; it is the only characteristic the iOS app treats as **optional**, so older firmware still connects.
+- `0015 tail` (global, persisted, carried in the sync beacon) is the comet's fading tail length in LEDs, 0–20; 0 = no tail. `BEACON_VERSION` is bumped whenever the beacon layout changes (now 3), so sticks on different firmware refuse to pair.
+- `0016 through` (global, persisted, kinematic so staged + beacon-carried): 0 = pendulum through-swing (decelerates to the finish), 1 = constant speed (default). Both are identical up to impact. The **putt up to impact is Grober's resonant-pendulum curve** (`puttBackEase`/`puttDownEase`, arXiv:0903.1762; impact speed 1.61× the downswing average). `000d followMs` is only the through-swing on/off; its duration is derived (`followDurMs`).
+- **Firmware version over BLE:** standard Device Information Service `0x180A` — Firmware Revision `0x2A26` = `<git sha>[-dirty] <compile date time>`, Model Number `0x2A24` = `generic-esp32`/`dig2go`. `tools/flash.sh` writes the sha into the untracked `tempo_trainer/build_version.h`. No `0x180A` service = a build from before version reporting.
 - `000f`-`0011` are the **full-swing purple aiming dot** (per-mode): enabled, absolute LED position (skips other dots), and appear-moment (0 address / 1 top / 2 downswing / 3 impact); stays lit until the next rep, independent of `railsLit`.
 
 ## PCB (`pcb/`)
@@ -51,7 +54,7 @@ sh tools/flash.sh --loop                    # flash a batch, swapping boards bet
   render, for silkscreen checks.
 
 ## Gotchas (cost real debugging time)
-- **`createService()` GATT handles:** default 15 silently truncates the table after ~7 chars, and the Arduino BLE wrapper doesn't check the error. Count exactly: 1 + chars×2 + 1 per CCCD — today `1 + 19×2 + 2 = 41` against the 48 reserved. Symptom of getting it wrong: client sees only the first 6-7 chars → "incompatible device".
+- **`createService()` GATT handles:** default 15 silently truncates the table after ~7 chars, and the Arduino BLE wrapper doesn't check the error. Count exactly: 1 + chars×2 + 1 per CCCD — today `1 + 21×2 + 2 = 45` against the 48 reserved. Symptom of getting it wrong: client sees only the first 6-7 chars → "incompatible device".
 - **`FastLED.show()` appears exactly once**, inside `showFrame()` — that's what makes the 180 flip (`0014`) total, since the mirror is applied to the finished frame. `FastLED.clear()`/`clear(true)` are banned (they touch the *physical* buffer / call `showColor()`); use `clearLeds()` + `showFrame()`. `firmware_tests/check_show_chokepoint.sh` enforces it.
 - **`0014` flip is DEVICE-LOCAL**: not in the `SyncBeacon`, so a leader never rotates a follower's strip — and a follower is BLE-quiet, so set orientation before joining a set.
 - **iOS GATT cache:** after re-flashing with a changed characteristic set, toggle the iPhone's Bluetooth (or forget the device) to drop the stale cached table.

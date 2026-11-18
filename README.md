@@ -110,7 +110,8 @@ The board appears as a serial port (`/dev/cu.usbserial-*` or
 
 Center LED (index ~71/72) = ball / impact. Each rep runs a get-ready **countdown**
 (the green impact LED pulses smoothly N times, 1 s each, with the aim dots lit) and
-then the stroke, auto-repeating after a rest gap. During the stroke the comet is
+then the stroke, auto-repeating after a rest gap. With `rails lit` on, the aim dots stay lit
+through the rest gap too, so the stick never goes fully dark between reps. During the stroke the comet is
 **bounded** by the impact and aim markers (the green/amber "rails", toggle `000e`):
 it emerges from the ball and parks at the backswing point rather than overshooting.
 
@@ -118,17 +119,35 @@ it emerges from the ball and parks at the backswing point rather than overshooti
 
 1. **Get-ready countdown:** the green ball pulses smoothly N times (1 s each,
    N = `round(get-ready ms / 1000)`), with the amber aim dot lit so you can set up.
-2. **Backswing:** comet center -> amber with `sin` easing (fast leaving center,
-   decelerating to a stop), **bounded to `[impact, amber]`** — it emerges from the
-   ball and parks at the amber without overshooting either marker.
+2. **Backswing:** comet center -> amber on Grober's pendulum curve (see below): it starts from
+   rest, peaks about 63% of the way through, and slows to a stop at the top. **Bounded to
+   `[impact, amber]`** — it emerges from the ball and parks at the amber without overshooting
+   either marker.
 3. **Drop to impact:** comet amber -> center over `downswing ms` (the tempo
    number; ratio = backswing:downswing), shaped by `release`. Fastest at impact;
    flows **through** impact (no hitch) into the follow-through.
-4. **Follow-through:** center -> `-reach` over `follow-thru ms`, decelerating.
+4. **Through-swing:** center -> `-reach`. It always leaves the ball at **exactly the speed the
+   comet arrived with** -- no hitch at impact -- and then follows the `through-swing` style (`0016`):
+   - **constant** (1, the default): holds impact speed all the way to the finish, no deceleration.
+     Takes `downswing ms / 1.61` (201 ms for the default 325 ms downswing).
+   - **pendulum** (0): decelerates like a pendulum to rest at the finish. Takes `pi/2` times as long
+     (316 ms), so the through-swing lasts about as long as the downswing.
+
+   Both styles are identical up to impact. The time follows from the downswing (and shortens with
+   more `release`), so `follow-thru ms` (`000d`) no longer sets a duration: it is only the on/off
+   (0 = no through-swing).
+
+**The putt up to impact is Grober's resonant pendulum** (R. D. Grober, *Resonance in Putting*,
+arXiv:0903.1762): displacement proportional to `sin(th) - sin(2th)/2` over `th` in `[0, pi]`, with
+the top of the backswing at `2pi/3`. That gives a takeaway that starts from rest and peaks about
+63% of the way through the backswing, zero acceleration at impact, and an impact speed 1.61x the
+downswing's average. The paper stops at impact, so the finish point (one backswing length past the
+ball) and the two through-swing styles are this project's choice, not Grober's.
 5. **Hold** at the finish, then **rest**, repeat.
 
 With `rails lit` (`000e`) on, the green impact and amber backswing dots stay lit
-throughout as the bounding "walls"; off, the amber shows until reached (legacy look).
+throughout as the bounding "walls", including the rest gap between reps; off, the amber
+shows until reached and the rest gap is dark (legacy look).
 
 ### Full mode (arc projected onto the strip)
 
@@ -201,9 +220,9 @@ lands at its mirror position with identical phase -- a reflection in space, neve
 Worst case it is visible one render tick later (<=12 ms while running, <=20 ms idle), plus the
 BLE round trip; a phone write with response is typically another 60-130 ms.
 
-Two states would otherwise give no feedback at all -- idle lights a single dim centre pixel, and
-the rest gap lights nothing -- so for 1.2 s after a flip both paint the mode's static dot map
-instead. The amber dot jumping to the other side of the ball is the answer to "which way does it
+Two states would otherwise give little or no feedback -- idle lights a single dim centre pixel,
+and the rest gap lights nothing when the rails are off -- so for 1.2 s after a flip both paint
+the mode's static dot map instead. The amber dot jumping to the other side of the ball is the answer to "which way does it
 run now?".
 
 **It is device-local.** Orientation describes how *that* stick is lying, so it is deliberately
@@ -221,9 +240,9 @@ It is also the one characteristic the iOS app treats as **optional**, so a stick
 
 | UUID tail | Param | Type | Range / units | Scope | Default (putt / full) |
 |---|---|---|---|---|---|
-| 0002 | backswing ms | uint16 LE | 100-5000 | per-mode | 700 / 900 |
-| 0003 | downswing ms (top→impact) | uint16 LE | 100-5000 | per-mode | 350 / 300 |
-| 0004 | reach (amber) | uint8 | 1-71 LEDs from center | per-mode | 58 / 60 |
+| 0002 | backswing ms | uint16 LE | 100-5000 | per-mode | 650 / 900 |
+| 0003 | downswing ms (top→impact) | uint16 LE | 100-5000 | per-mode | 325 / 300 |
+| 0004 | reach (amber) | uint8 | 1-71 LEDs from center | per-mode | 23 (a 5 ft putt) / 60 |
 | 0005 | brightness | uint8 | 0-255 | global | 40 |
 | 0006 | control | uint8 | 0 idle / 1 loop / 2 single / 3 preview | runtime | 1 |
 | 0007 | get-ready ms | uint16 LE | 0-10000 (countdown: round(ms/1000) impact pulses) | global | 1000 |
@@ -232,12 +251,26 @@ It is also the one characteristic the iOS app treats as **optional**, so a stick
 | 000a | mode | uint8 | 0 putt / 1 full | persisted | 0 |
 | 000b | top-hold ms | uint16 LE | 0-2000 | per-mode | 0 / 150 |
 | 000c | release | uint8 | 0-100 (0 pendular .. 100 lag) | per-mode | 0 / 55 |
-| 000d | follow-thru ms | uint16 LE | 0-10000 (impact→finish) | per-mode | 350 / 300 |
+| 000d | follow-thru ms | uint16 LE | 0 = no follow-through; any other value = follow through at impact speed (the number itself is unused) | per-mode | 350 / 300 |
 | 000e | rails lit | uint8 | 0/1 (keep impact+aim dots lit) | global | 1 |
 | 000f | aim2 enabled | uint8 | 0/1 (purple weight-shift dot, full only) | per-mode | 0 / 0 |
 | 0010 | aim2 position | uint8 | 1-142 (absolute LED index) | per-mode | 70 / 70 |
 | 0011 | aim2 when | uint8 | 0 address / 1 top / 2 downswing / 3 impact | per-mode | 1 / 1 |
-| 0014 | flip | uint8 | 0 normal / 1 mirrored end-for-end | global, device-local | 0 |
+| 0014 | flip | uint8 | 0 normal / 1 mirrored end-for-end | global, device-local | 1 (generic ESP32) / 0 (Dig2go) |
+| 0016 | through-swing | uint8 | 0 pendulum (decelerates to the finish) / 1 constant speed | global | 1 |
+| 0015 | comet tail | uint8 | 0-20 LEDs of fading trail behind the comet (0 = none, a crisp 2-LED dot) | global | 0 |
+
+**Firmware version.** A stick also exposes the standard Device Information Service (`0x180A`),
+so any BLE client can tell which build it is running without a USB cable:
+
+| Characteristic | Value |
+|---|---|
+| Firmware Revision `0x2A26` | `<git sha>[-dirty] <compile date time>`, e.g. `169fc72 Nov 16 2026 13:55:38` |
+| Model Number `0x2A24` | `generic-esp32` or `dig2go` |
+
+`tools/flash.sh` stamps the git sha into the build (`-dirty` = the firmware sources had uncommitted
+changes); a build that bypasses the script reports `unversioned` plus its compile time. A stick
+with no `0x180A` service predates version reporting. The same line is printed on serial at boot.
 
 uint16 values are little-endian (e.g. 700 = `BC 02`). Per-mode writes apply to
 whichever mode is currently selected (`000a`); switching `000a` refreshes the
@@ -276,8 +309,8 @@ write characteristics), or a Web Bluetooth page (TODO below).
   does not check the error. Symptom: a client discovers only the first 6-7 characteristics and
   rejects the device as incompatible -- indistinguishable from the stale-GATT-cache symptom
   below, so you pay the debugging cost twice. Count it exactly every time you add one:
-  1 (service) + chars x 2 + 1 per CCCD. Today that is `1 + 19x2 + 2 = 41`, against the 48
-  reserved by `createService(BLEUUID(SVC_UUID), 48)` -- room for 3 more before it must rise.
+  1 (service) + chars x 2 + 1 per CCCD. Today that is `1 + 21x2 + 2 = 45`, against the 48
+  reserved by `createService(BLEUUID(SVC_UUID), 48)` -- room for 1 more before it must rise.
 - **`FastLED.show()` must appear exactly once**, inside `showFrame()`. That is what makes the
   180 flip total: the mirror is applied to the finished buffer, so no LED element can escape it
   -- but only while every render path latches through that one function. `FastLED.clear(true)`
@@ -328,7 +361,7 @@ None of the above touches the flashed binary, so these still need a stick. Run o
 boards -- the Dig2go and the generic ESP32:
 
 1. Flip mid-backswing while looping: the comet reflects with no phase jump and no tearing.
-2. Flip during the dark rest gap, and while idle: the dot map appears for ~1.2 s and the amber
+2. Flip during the rest gap (rails on and off), and while idle: the dot map appears for ~1.2 s and the amber
    dot is on the opposite side of the green ball.
 3. Flip during the get-ready countdown.
 4. Flip while `control == 2` (single) and let the stroke auto-return to idle.

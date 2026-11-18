@@ -21,3 +21,6 @@ pcb/build/kicad-agent/
 
 # Python bytecode (pcb/tools)
 __pycache__/
+
+# Written by tools/flash.sh: the git stamp a build reports over BLE
+tempo_trainer/build_version.h
