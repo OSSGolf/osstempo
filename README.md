@@ -4,6 +4,8 @@ A TempoStik-style tempo trainer: a WS2812B LED strip animates a swing so the
 user follows a moving dot to groove their tempo. Two modes — **putting** (2:1)
 and **full swing** — selectable over BLE. No audio.
 
+Part of [OSSGolf](https://ossgolf.com), open source golf projects.
+
 ## Goal
 
 A white LED "comet" sweeps along the strip following a pendulum/arc model so the
