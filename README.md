@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://ossgolf.com"><img src="docs/media/ossgolf-wordmark.png" width="340" alt="oss/golf: for the hackers"></a>
+  <a href="https://ossgolf.com"><img src="docs/media/ossgolf-logo.png" width="340" alt="oss/golf: for the hackers"></a>
 </p>
 
 # OSSTempo
@@ -262,7 +262,7 @@ It is also the one characteristic the iOS app treats as **optional**, so a stick
 | 0003 | downswing ms (top→impact) | uint16 LE | 100-5000 | per-mode | 325 / 300 |
 | 0004 | reach (amber) | uint8 | 1-71 LEDs from center | per-mode | 23 (a 5 ft putt) / 60 |
 | 0005 | brightness | uint8 | 0-255 | global | 40 |
-| 0006 | control | uint8 | 0 idle / 1 loop / 2 single / 3 preview | runtime | 1 |
+| 0006 | control | uint8 | 0 idle / 1 loop / 2 single / 3 preview / 4 off | runtime | 1 |
 | 0007 | get-ready ms | uint16 LE | 0-10000 (countdown: round(ms/1000) impact pulses) | global | 1000 |
 | 0008 | finish hold ms | uint16 LE | 0-10000 | global | 600 |
 | 0009 | rest ms | uint16 LE | 0-20000 | global | 3000 |
@@ -277,6 +277,15 @@ It is also the one characteristic the iOS app treats as **optional**, so a stick
 | 0014 | flip | uint8 | 0 normal / 1 mirrored end-for-end | global, device-local | 1 (generic ESP32) / 0 (Dig2go) |
 | 0016 | through-swing | uint8 | 0 pendulum (decelerates to the finish) / 1 constant speed | global | 1 |
 | 0015 | comet tail | uint8 | 0-20 LEDs of fading trail behind the comet (0 = a crisp 2-LED dot) | global | 0 |
+| 0017 | auto-off timer | uint16 LE | minutes until the stick turns itself off, 1-600; 0 cancels. Reads back the minutes left | runtime | 0 |
+
+**Off and on.** Writing `0006` = `04` turns the stick off: the strip goes dark and the ESP32 clocks
+down from 240 to 80 MHz, with BLE still advertising so any client can turn it back on by writing
+another control value. The `0017` timer does the same after a set number of minutes and runs on the
+stick, so it fires with the app closed. In a synced set, write to the leader and the whole set
+follows. Off is a runtime state: a stick that is unplugged and plugged back in starts running.
+On a generic ESP32 the dark strip still draws its standby current; the Dig2go build also opens its
+relay and cuts the strip's 5V.
 
 **Firmware version.** A stick also exposes the standard Device Information Service (`0x180A`),
 so any BLE client can read which build it is running over the air:
